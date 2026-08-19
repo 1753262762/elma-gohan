@@ -49,6 +49,12 @@
       </view>
     </view>
 
+    <view v-if="visibleRiskReasons.length" class="risk-reasons">
+      <text v-for="reason in visibleRiskReasons" :key="reason" class="risk-reason">
+        {{ reason }}
+      </text>
+    </view>
+
     <view class="reason-section">
       <view class="reason-heading">
         <text class="reason-title">为什么是它</text>
@@ -152,6 +158,7 @@ const riskLabel = computed(() =>
 const riskSignalLevel = computed(() =>
   recommendation.value ? riskSignalLevels[recommendation.value.risk.riskLevel] : 0,
 )
+const visibleRiskReasons = computed(() => recommendation.value?.risk.reasons.slice(0, 2) ?? [])
 const selectedFeedback = computed(() => recommendationStore.getCurrentFeedback())
 const operationBusy = computed(
   () => rerolling.value || navigating.value || submittingFeedback.value,
@@ -413,6 +420,18 @@ async function submitFeedback(result: FeedbackResult) {
 
 .risk-signal {
   gap: 8rpx;
+}
+
+.risk-reasons {
+  padding: 12rpx 8rpx 0;
+}
+
+.risk-reason {
+  display: block;
+  margin-top: 6rpx;
+  color: #66708a;
+  font-size: 18rpx;
+  line-height: 1.4;
 }
 
 .risk-dot {

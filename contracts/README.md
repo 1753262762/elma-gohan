@@ -1,6 +1,6 @@
 # ELMA API 契约说明
 
-V0.12 的机器可读接口事实源是 [`openapi.yaml`](./openapi.yaml)。本文只解释已确定的跨端规则，不定义第二套 DTO。
+V0.2.0 的机器可读接口事实源是 [`openapi.yaml`](./openapi.yaml)。本文只解释已确定的跨端规则，不定义第二套 DTO。
 
 ## 接口范围
 
@@ -19,7 +19,7 @@ V0.12 的机器可读接口事实源是 [`openapi.yaml`](./openapi.yaml)。本�
 3. 服务端保存最多 6 个候选；首次推荐之外允许最多 5 次 reroll。候选耗尽后的调用返回初始推荐，不产生第七家。
 4. `alternativesRemaining` 是前端是否显示“换一家”的唯一判断字段。
 5. 反馈体遵循产品方案，仅包含 `LIKE`、`NORMAL` 或 `DISLIKE`。服务端根据推荐会话当前展示项确定餐厅，并在响应中返回实际关联的 `restaurantId`。
-6. 风险分数、风险等级、风险理由、推荐理由和算法版本全部由服务端产生，前端只展示。
+6. 风险分数、风险等级、置信度、风险理由、推荐理由和算法版本全部由服务端产生，前端只展示最多两条风险理由。
 7. 高德 Web Service Key、第三方 POI 原始结构、RiskEngine 和排序过程均不进入接口响应。
 
 ## 品类筛选
@@ -39,7 +39,7 @@ V0.12 的机器可读接口事实源是 [`openapi.yaml`](./openapi.yaml)。本�
 
 - `recommendationId`：后续 reroll 和 feedback 使用的推荐会话 ID。
 - `restaurant`：导航和展示所需的标准餐厅摘要。
-- `risk`：可解释、带版本的风险结果。
+- `risk`：可解释、带版本的风险结果；V0.2 新增必填 `confidence`（0～1），内部 factors 不对客户端公开。
 - `reasons`：服务端生成的推荐理由。
 - `alternativesRemaining`：剩余未展示替代项数量，范围 0～5。
 

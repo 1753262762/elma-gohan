@@ -14,8 +14,8 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * V0.1 默认推荐引擎:
- * 硬过滤 -> 高风险剔除 -> LowRegretScore 排序 -> Top-K -> 加权随机抽取候选池(A/B/C)。
+ * recommendation-v0.2 默认推荐引擎:
+ * 硬过滤 -> 高风险剔除 -> LowRegretScore 排序 -> Top-K 多样化 -> 加权有限随机候选池。
  */
 @Component
 public class DefaultRecommendationEngine implements RecommendationEngine {
@@ -48,27 +48,50 @@ public class DefaultRecommendationEngine implements RecommendationEngine {
         List<Scored> scored = new ArrayList<>();
         for (Restaurant r : filtered) {
             RiskResult risk = risks.get(r.sourcePoiId());
-            scored.add(new Scored(r, risk, scorer.score(r, risk, condition)));
+            scored.add(new Scored(r, risk, scorer.score(r, risk, preference)));
         }
         scored.sort(Comparator.comparingDouble(Scored::score).reversed());
         List<Scored> diversified = diversify(scored, condition);
         List<Scored> topK = diversified.subList(0, Math.min(props.getTopK(), diversified.size()));
 
         int poolSize = Math.min(props.getPoolSize(), topK.size());
-        List<Scored> shortlist = topK.subList(0, poolSize);
-        // 权重下限 1.0,保证 Top-K 内不会出现零概率(避免"永远第一名")。
-        List<Double> weights = shortlist.stream().map(s -> Math.max(1.0, s.score())).toList();
-        List<Scored> picked = new WeightedRandomSelector(System.nanoTime())
-                .select(shortlist, weights, poolSize);
-        // 随机决定均衡候选集的展示起点后,再次交错品类,避免连续出现同类店。
-        picked = diversify(picked, condition);
+        List<Scored> picked = selectDiversified(topK, condition, poolSize);
 
         List<RestaurantCandidate> pool = picked.stream()
                 .map(s -> new RestaurantCandidate(
                         s.restaurant(), s.risk(), s.score(),
-                        scorer.reasons(s.restaurant(), s.risk(), condition)))
+                        scorer.reasons(s.restaurant(), s.risk(), preference)))
                 .toList();
         return new RecommendationResult(pool, props.getAlgorithmVersion());
+    }
+
+    /**
+     * 只在 Top-K 内抽取；按多样化分组轮询，每组内部按 LowRegretScore 加权且不放回。
+     * 这样随机性不会重新引入被过滤项，也不会把均衡候选池抽成单一品类。
+     */
+    private List<Scored> selectDiversified(List<Scored> topK, SearchCondition condition,
+                                           int poolSize) {
+        Map<String, List<Scored>> groups = new LinkedHashMap<>();
+        for (Scored item : topK) {
+            groups.computeIfAbsent(diversityKey(item.restaurant(), condition),
+                    ignored -> new ArrayList<>()).add(item);
+        }
+        WeightedRandomSelector selector = new WeightedRandomSelector(System.nanoTime());
+        List<Scored> picked = new ArrayList<>(poolSize);
+        while (picked.size() < poolSize) {
+            boolean added = false;
+            for (List<Scored> group : groups.values()) {
+                if (picked.size() >= poolSize || group.isEmpty()) continue;
+                List<Double> weights = group.stream()
+                        .map(item -> Math.max(1.0, item.score())).toList();
+                Scored chosen = selector.select(group, weights, 1).get(0);
+                group.remove(chosen);
+                picked.add(chosen);
+                added = true;
+            }
+            if (!added) break;
+        }
+        return picked;
     }
 
     /**

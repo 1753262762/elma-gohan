@@ -55,6 +55,7 @@ export interface RestaurantCategory {
 export interface RiskAssessment {
   riskScore: number
   riskLevel: RiskLevel
+  confidence: number
   reasons: string[]
   algorithmVersion: string
 }

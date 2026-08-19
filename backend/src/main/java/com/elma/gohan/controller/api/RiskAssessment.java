@@ -6,6 +6,7 @@ import java.util.List;
 public record RiskAssessment(
         int riskScore,
         String riskLevel,
+        double confidence,
         List<String> reasons,
         String algorithmVersion
 ) {

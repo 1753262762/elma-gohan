@@ -2,6 +2,13 @@ package com.elma.gohan.domain.recommendation;
 
 import com.elma.gohan.domain.restaurant.SearchCondition;
 
-/** V0.1 的用户偏好即本次请求条件(无画像)。 */
-public record UserPreference(SearchCondition condition) {
+/** 本次显式条件 + 历史反馈形成的 TasteProfile。 */
+public record UserPreference(SearchCondition condition, TasteProfile tasteProfile) {
+    public UserPreference {
+        tasteProfile = tasteProfile == null ? TasteProfile.empty() : tasteProfile;
+    }
+
+    public UserPreference(SearchCondition condition) {
+        this(condition, TasteProfile.empty());
+    }
 }

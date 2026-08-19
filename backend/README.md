@@ -1,4 +1,4 @@
-# ELMA 家今天的饭 V0.12 后端
+# ELMA 家今天的饭 V0.2 后端
 
 Java 17 + Spring Boot 3.5 + PostgreSQL + 高德 Web Service 的模块化单体。接口契约见 [`../contracts/openapi.yaml`](../contracts/openapi.yaml),实施计划见 [`../docs/backend-implementation-plan.md`](../docs/backend-implementation-plan.md)。
 
@@ -18,6 +18,8 @@ mvn spring-boot:run   # 启动开发服务(默认 8080)
 | `DB_USERNAME` / `DB_PASSWORD` | 数据库账号 | `postgres` / 空 |
 | `AMAP_KEY` | 高德 Web Service Key,**只能放环境变量** | 空(未配置时推荐接口返回 502) |
 | `AMAP_BASE_URL` | 高德 API 地址(测试 stub 用) | `https://restapi.amap.com` |
+| `EVIDENCE_PROVIDER` | Evidence 实现：`file` 或 `empty` | `file` |
+| `EVIDENCE_FILE` | 标准化评论证据 JSON，可用外部文件覆盖 | `classpath:evidence/restaurant-evidence.json` |
 | `DB_TEST_NAME` | 测试库名(仅 `src/test/resources/application.yml`) | `elma_test` |
 
 本地准备:创建 `elma` 与 `elma_test` 两个数据库,Flyway 启动时自动建表。`DB_PASSWORD` 等口令一律走环境变量,仓库不含任何真实凭据。
@@ -29,14 +31,36 @@ controller/        三个 POST 接口,DTO 严格对齐 openapi.yaml
 application/       RecommendationService:会话、候选池、reroll 游标、反馈编排
 domain/
   restaurant/      Restaurant 标准模型(第三方数据必须先转此模型)
-  risk/            RuleBasedRiskEngine:可配置规则,阈值全在 application.yml(elma.risk.*)
-  recommendation/  品类硬过滤 -> 高风险剔除 -> LowRegretScore -> 多样化重排 -> 6 家候选池
+  risk/            risk-v0.2:评分/模板/burst/趋势/数据不足,阈值在 application.yml(elma.risk.*)
+  recommendation/  高风险剔除 -> LowRegretScore + TasteProfile -> Top-10 -> 6 家候选池
 provider/
   poi/             PoiProvider + AmapPoiProvider/AmapClient/AmapResponseMapper
-  evidence/        EvidenceProvider + EmptyEvidenceProvider
+  evidence/        EvidenceProvider + FileEvidenceProvider/EmptyEvidenceProvider
 infrastructure/    JPA 实体/仓库、全局异常处理、traceId 过滤器
 config/            Amap/Risk/Recommendation 配置属性
 ```
+
+## File Evidence 格式
+
+文件顶层为 `restaurants` 数组，每家以 POI 来源与外部 ID 对应餐厅，评论会映射成统一 `RestaurantEvidence`：
+
+```json
+{
+  "restaurants": [{
+    "source": "AMAP",
+    "sourcePoiId": "B001",
+    "fetchedAt": "2026-08-19T00:00:00Z",
+    "reviews": [{
+      "externalReviewId": "review-1",
+      "text": "现场用餐记录",
+      "rating": 4.5,
+      "createdAt": "2026-08-18T12:00:00Z"
+    }]
+  }]
+}
+```
+
+单餐厅最多读取 200 条。文件读取失败、JSON 损坏、无匹配餐厅或 Provider 异常都会转为 `UNAVAILABLE/NO_DATA`，主推荐继续运行。
 
 ## 人工验收
 

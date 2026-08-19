@@ -31,8 +31,9 @@ function recommendation(restaurantId: string, name: string, alternativesRemainin
     risk: {
       riskScore: 18,
       riskLevel: 'LOW',
+      confidence: 0.82,
       reasons: ['评分稳定'],
-      algorithmVersion: 'risk-v0.1',
+      algorithmVersion: 'risk-v0.2',
     },
     reasons: ['距离近'],
     alternativesRemaining,

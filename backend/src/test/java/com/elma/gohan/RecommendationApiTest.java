@@ -10,6 +10,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 
@@ -26,6 +27,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
+import org.springframework.context.annotation.Import;
+import com.elma.gohan.provider.evidence.EvidenceProvider;
+import com.elma.gohan.provider.evidence.RestaurantEvidence;
 
 /**
  * 接口集成测试:连本机 elma_test 库,用本地 HTTP stub 替代高德(不依赖真实 Key)。
@@ -33,6 +40,7 @@ import org.springframework.test.context.DynamicPropertySource;
  * stub 在静态块中启动,确保早于 Spring 上下文读取 elma.amap.base-url。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@Import(RecommendationApiTest.ThrowingEvidenceConfiguration.class)
 class RecommendationApiTest {
 
     private static final String USER = "11111111-1111-1111-1111-111111111111";
@@ -47,6 +55,19 @@ class RecommendationApiTest {
 
     private static final HttpServer amapStub;
     private static final AtomicReference<String> amapResponse = new AtomicReference<>("{}");
+    private static final AtomicBoolean evidenceFailure = new AtomicBoolean();
+
+    @TestConfiguration
+    static class ThrowingEvidenceConfiguration {
+        @Bean
+        @Primary
+        EvidenceProvider controllableEvidenceProvider() {
+            return restaurant -> {
+                if (evidenceFailure.get()) throw new IllegalStateException("test evidence failure");
+                return RestaurantEvidence.empty();
+            };
+        }
+    }
 
     static {
         try {
@@ -78,6 +99,7 @@ class RecommendationApiTest {
 
     @AfterEach
     void cleanDb() {
+        evidenceFailure.set(false);
         jdbc.update("DELETE FROM user_preference");
         jdbc.update("DELETE FROM user_feedback");
         jdbc.update("DELETE FROM recommendation_candidate");
@@ -106,15 +128,17 @@ class RecommendationApiTest {
         JsonNode risk = body.get("risk");
         assertThat(risk.get("riskScore").asInt()).isBetween(0, 100);
         assertThat(risk.get("riskLevel").asText()).isIn("LOW", "MEDIUM_LOW", "MEDIUM", "HIGH");
+        assertThat(risk.get("confidence").asDouble()).isBetween(0.0, 1.0);
         assertThat(risk.get("reasons").size()).isGreaterThanOrEqualTo(1);
-        assertThat(risk.get("algorithmVersion").asText()).isEqualTo("risk-v0.1");
+        assertThat(risk.get("algorithmVersion").asText()).isEqualTo("risk-v0.2");
         assertThat(body.get("reasons").size()).isBetween(1, 5);
         assertThat(body.get("alternativesRemaining").asInt()).isBetween(0, 5);
         // 落库校验:推荐日志含条件快照与双算法版本
         Integer logs = jdbc.queryForObject(
                 "SELECT count(*) FROM recommendation_log WHERE request_condition_json IS NOT NULL "
-                        + "AND risk_algorithm_version = 'risk-v0.1' "
-                        + "AND recommendation_algorithm_version = 'lowregret-v0.12'", Integer.class);
+                        + "AND recommended_restaurant_id = current_restaurant_id "
+                        + "AND risk_algorithm_version = 'risk-v0.2' "
+                        + "AND recommendation_algorithm_version = 'recommendation-v0.2'", Integer.class);
         assertThat(logs).isEqualTo(1);
     }
 
@@ -134,6 +158,16 @@ class RecommendationApiTest {
             JsonNode next = reroll(USER, recommendationId);
             assertThat(next.get("alternativesRemaining").asInt()).isEqualTo(remaining);
             assertThat(shown.add(next.get("restaurant").get("id").asText())).isTrue();
+            if (remaining == 4) {
+                String recommended = jdbc.queryForObject(
+                        "SELECT recommended_restaurant_id::text FROM recommendation_log WHERE id = ?::uuid",
+                        String.class, recommendationId);
+                String current = jdbc.queryForObject(
+                        "SELECT current_restaurant_id::text FROM recommendation_log WHERE id = ?::uuid",
+                        String.class, recommendationId);
+                assertThat(recommended).isEqualTo(a);
+                assertThat(current).isNotEqualTo(recommended);
+            }
         }
         assertThat(shown).hasSize(6);
 
@@ -160,6 +194,32 @@ class RecommendationApiTest {
         assertThat(feedback.get("recommendationId").asText()).isEqualTo(recommendationId);
         assertThat(feedback.get("restaurantId").asText()).isEqualTo(displayed);
         assertThat(feedback.get("recordedAt")).isNotNull();
+        Integer profiles = jdbc.queryForObject(
+                "SELECT count(*) FROM user_preference "
+                        + "WHERE preference_json ->> 'schemaVersion' = '2'", Integer.class);
+        assertThat(profiles).isEqualTo(1);
+    }
+
+    @Test
+    void oldFeedbackRebuildsV2TasteProfileWhenSnapshotIsMissing() throws Exception {
+        String recommendationId = JSON.readTree(
+                create(USER, "{\"latitude\": 28.2282, \"longitude\": 112.9388}").getBody())
+                .get("recommendationId").asText();
+        assertThat(post("/api/v1/recommendations/" + recommendationId + "/feedback",
+                USER, "{\"result\": \"DISLIKE\"}").getStatusCode().value()).isEqualTo(201);
+        jdbc.update("DELETE FROM user_preference WHERE anonymous_user_id = ?::uuid", USER);
+
+        assertThat(create(USER,
+                "{\"latitude\": 28.2282, \"longitude\": 112.9388}").getStatusCode().value())
+                .isEqualTo(201);
+        String snapshot = jdbc.queryForObject(
+                "SELECT preference_json::text FROM user_preference "
+                        + "WHERE anonymous_user_id = ?::uuid ORDER BY created_at DESC LIMIT 1",
+                String.class, USER);
+        JsonNode profile = JSON.readTree(snapshot);
+        assertThat(profile.get("schemaVersion").asInt()).isEqualTo(2);
+        assertThat(profile.get("feedbackCount").asInt()).isEqualTo(1);
+        assertThat(profile.get("categoryWeights").elements().next().asDouble()).isNegative();
     }
 
     @Test
@@ -263,6 +323,14 @@ class RecommendationApiTest {
         } finally {
             amapResponse.set(eightPois());
         }
+    }
+
+    @Test
+    void evidenceProviderFailureDoesNotBreakRecommendation() {
+        evidenceFailure.set(true);
+        ResponseEntity<String> response = create(USER,
+                "{\"latitude\": 28.2282, \"longitude\": 112.9388}");
+        assertThat(response.getStatusCode().value()).isEqualTo(201);
     }
 
     private ResponseEntity<String> create(String userId, String body) {

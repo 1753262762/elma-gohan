@@ -7,8 +7,14 @@ import com.elma.gohan.TestRestaurants;
 import com.elma.gohan.config.RecommendationProperties;
 import com.elma.gohan.domain.restaurant.SearchCondition;
 import com.elma.gohan.domain.risk.RiskLevel;
+import com.elma.gohan.domain.risk.RiskFactors;
 import com.elma.gohan.domain.risk.RiskResult;
 import java.util.List;
+import java.util.Map;
+import java.time.LocalDateTime;
+import com.elma.gohan.domain.restaurant.BusinessStatus;
+import com.elma.gohan.domain.restaurant.DataCompleteness;
+import com.elma.gohan.domain.restaurant.Restaurant;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -18,7 +24,7 @@ class LowRegretScorerTest {
     private final LowRegretScorer scorer = new LowRegretScorer(props);
 
     private RiskResult risk(int score) {
-        return new RiskResult(score, RiskLevel.LOW, List.of("评分稳定"), "risk-v0.1");
+        return new RiskResult(score, RiskLevel.LOW, List.of("评分稳定"), "risk-v0.2");
     }
 
     @Test
@@ -50,5 +56,42 @@ class LowRegretScorerTest {
         var reasons = scorer.reasons(TestRestaurants.full("a", 4.6, 100), risk(0), condition);
         assertThat(reasons).isNotEmpty();
         assertThat(reasons).hasSizeLessThanOrEqualTo(5);
+    }
+
+    @Test
+    @DisplayName("新用户排序中性，老用户历史品类偏好改变分数")
+    void tasteProfileChangesOldUserRanking() {
+        Restaurant chinese = category("c", "CHINESE");
+        Restaurant foreign = category("f", "FOREIGN");
+        var condition = new SearchCondition(1000, null, "ANY", List.of());
+        double newChinese = scorer.score(chinese, risk(10), new UserPreference(condition));
+        double newForeign = scorer.score(foreign, risk(10), new UserPreference(condition));
+        assertThat(newChinese).isEqualTo(newForeign);
+
+        TasteProfile profile = new TasteProfile(2, Map.of("CHINESE", 3.0, "FOREIGN", -3.0),
+                Map.of(), Map.of(), 6, LocalDateTime.now());
+        var oldUser = new UserPreference(condition, profile);
+        assertThat(scorer.score(chinese, risk(10), oldUser))
+                .isGreaterThan(scorer.score(foreign, risk(10), oldUser));
+    }
+
+    @Test
+    @DisplayName("低可信的表面低风险会按不确定性风险校正")
+    void lowConfidenceRiskDoesNotGainFalseAdvantage() {
+        Restaurant restaurant = category("c", "CHINESE");
+        var condition = new SearchCondition(1000, null, "ANY", List.of());
+        RiskResult trusted = new RiskResult(0, RiskLevel.LOW, 1.0, RiskFactors.empty(),
+                List.of("证据充分"), "risk-v0.2");
+        RiskResult uncertain = new RiskResult(0, RiskLevel.LOW, 0.0, RiskFactors.empty(),
+                List.of("证据不足"), "risk-v0.2");
+
+        assertThat(scorer.score(restaurant, trusted, condition))
+                .isGreaterThan(scorer.score(restaurant, uncertain, condition));
+    }
+
+    private Restaurant category(String id, String category) {
+        return new Restaurant(null, "AMAP", id, "餐厅" + id, 28, 112, 300,
+                category, category, 4.5, 100, 50, BusinessStatus.OPEN,
+                "09:00-21:00", "地址", DataCompleteness.FULL);
     }
 }

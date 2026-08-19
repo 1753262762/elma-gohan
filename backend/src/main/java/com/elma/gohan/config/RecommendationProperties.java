@@ -8,12 +8,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "elma.recommendation")
 public class RecommendationProperties {
 
-    private String algorithmVersion = "lowregret-v0.12";
+    private String algorithmVersion = "recommendation-v0.2";
     private int topK = 10;
     /** 会话候选池大小:首次推荐 + 最多 5 次重新选择。 */
     private int poolSize = 6;
     private int walkingSpeedMetersPerMinute = 80;
     private Weights weights = new Weights();
+    private Taste taste = new Taste();
+    private double uncertaintyRisk = 50.0;
 
     public String getAlgorithmVersion() { return algorithmVersion; }
     public void setAlgorithmVersion(String algorithmVersion) { this.algorithmVersion = algorithmVersion; }
@@ -27,6 +29,10 @@ public class RecommendationProperties {
     }
     public Weights getWeights() { return weights; }
     public void setWeights(Weights weights) { this.weights = weights; }
+    public Taste getTaste() { return taste; }
+    public void setTaste(Taste taste) { this.taste = taste; }
+    public double getUncertaintyRisk() { return uncertaintyRisk; }
+    public void setUncertaintyRisk(double value) { uncertaintyRisk = value; }
 
     public static class Weights {
         private double rating = 25;
@@ -48,5 +54,20 @@ public class RecommendationProperties {
         public void setCompleteness(double completeness) { this.completeness = completeness; }
         public double getRisk() { return risk; }
         public void setRisk(double risk) { this.risk = risk; }
+    }
+
+    public static class Taste {
+        private double maxAdjustment = 15;
+        private double categoryWeight = 0.50;
+        private double priceWeight = 0.25;
+        private double distanceWeight = 0.25;
+        public double getMaxAdjustment() { return maxAdjustment; }
+        public void setMaxAdjustment(double v) { maxAdjustment = v; }
+        public double getCategoryWeight() { return categoryWeight; }
+        public void setCategoryWeight(double v) { categoryWeight = v; }
+        public double getPriceWeight() { return priceWeight; }
+        public void setPriceWeight(double v) { priceWeight = v; }
+        public double getDistanceWeight() { return distanceWeight; }
+        public void setDistanceWeight(double v) { distanceWeight = v; }
     }
 }

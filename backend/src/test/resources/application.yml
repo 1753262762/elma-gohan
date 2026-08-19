@@ -34,29 +34,23 @@ elma:
     category-map:
       "050100": { code: CHINESE, label: 中餐厅 }
       "050300": { code: SNACK, label: 小吃快餐 }
+  evidence:
+    provider: file
+    location: classpath:evidence/test-evidence.json
+    max-reviews-per-restaurant: 200
   risk:
-    algorithm-version: risk-v0.1
+    algorithm-version: risk-v0.2
     rating:
       fair-min: 4.0
       good-min: 4.2
       excellent-min: 4.5
-    points:
-      rating-good: 5
-      rating-fair: 15
-      rating-poor: 30
-      rating-missing: 30
-      review-count-low: 10
-      review-count-threshold: 10
-      opening-hours-missing: 10
-      price-missing: 5
-      price-anomaly: 10
     price-anomaly-ratio: 1.5
     levels:
       low-max-inclusive: 20
       medium-low-max-inclusive: 40
       medium-max-inclusive: 60
   recommendation:
-    algorithm-version: lowregret-v0.12
+    algorithm-version: recommendation-v0.2
     top-k: 10
     pool-size: 6
     walking-speed-meters-per-minute: 80
@@ -67,3 +61,18 @@ elma:
       category: 10
       completeness: 10
       risk: 20
+    uncertainty-risk: 50
+    taste:
+      max-adjustment: 15
+      category-weight: 0.50
+      price-weight: 0.25
+      distance-weight: 0.25
+  taste:
+    decay: 0.95
+    max-absolute-weight: 3.0
+    feedback:
+      like: 1.0
+      normal: 0.1
+      dislike: -1.0
+    price-band-upper-bounds: [30, 60, 100]
+    distance-band-upper-bounds: [500, 1000, 2000]

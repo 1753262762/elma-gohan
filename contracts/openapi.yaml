@@ -1,9 +1,9 @@
 openapi: 3.0.3
 info:
   title: ELMA 家今天的饭 API
-  version: 0.12.0
+  version: 0.2.0
   description: |
-    V0.12 测试版的前后端接口契约。服务端负责 POI 获取、品类筛选、风险过滤、
+    V0.2 测试版的前后端接口契约。服务端负责 POI、Evidence、风险过滤、TasteProfile、
     Low Regret 排序、多样化重排和候选池管理；客户端不得自行重算风险或排序。
 servers:
   - url: /api/v1
@@ -88,8 +88,8 @@ paths:
       operationId: submitRecommendationFeedback
       summary: 提交用户反馈
       description: |
-        记录用户对该推荐会话当前展示餐厅的反馈。V0.1 每次提交生成一条反馈记录，
-        不触发模型训练或即时改写排序。
+        记录用户对该推荐会话当前展示餐厅的反馈。V0.2 每次提交生成一条反馈记录并更新画像，
+        新画像从下一次新推荐开始生效，不即时改写当前会话候选池。
       parameters:
         - $ref: '#/components/parameters/RecommendationId'
         - $ref: '#/components/parameters/AnonymousUserId'
@@ -119,7 +119,7 @@ components:
       name: X-Anonymous-User-Id
       in: header
       required: true
-      description: 客户端首次启动生成并持久化的匿名 UUID；V0.1 不要求登录。
+      description: 客户端首次启动生成并持久化的匿名 UUID；V0.2 不要求登录。
       schema:
         type: string
         format: uuid
@@ -259,8 +259,9 @@ components:
         risk:
           riskScore: 18
           riskLevel: LOW
+          confidence: 0.82
           reasons: [评分稳定, 店铺信息完整, 价格位于正常范围]
-          algorithmVersion: risk-v0.1
+          algorithmVersion: risk-v0.2
         reasons: [距离近, 预算合适, 基础评分稳定, 数据完整度较高]
         alternativesRemaining: 5
 
@@ -304,7 +305,7 @@ components:
         walkingMinutes:
           type: integer
           minimum: 1
-          description: V0.1 的服务端步行时间估算值，不代表实时路线规划。
+          description: 服务端步行时间估算值，不代表实时路线规划。
         averagePrice:
           type: integer
           nullable: true
@@ -338,7 +339,7 @@ components:
       enum: [MEAL, FAST_FOOD, DESSERT_DRINK, ANY]
       example: MEAL
       description: |
-        V0.12 面向用户的四类筛选：MEAL（正餐，默认）、FAST_FOOD（小吃快餐）、
+        V0.2 保留的四类筛选：MEAL（正餐，默认）、FAST_FOOD（小吃快餐）、
         DESSERT_DRINK（饮品甜品）和 ANY（随便）。细品类到大类的映射由服务端负责。
 
     RestaurantCategoryCode:
@@ -351,7 +352,7 @@ components:
     RiskAssessment:
       type: object
       additionalProperties: false
-      required: [riskScore, riskLevel, reasons, algorithmVersion]
+      required: [riskScore, riskLevel, confidence, reasons, algorithmVersion]
       properties:
         riskScore:
           type: integer
@@ -360,6 +361,13 @@ components:
         riskLevel:
           type: string
           enum: [LOW, MEDIUM_LOW, MEDIUM, HIGH]
+        confidence:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          description: 当前风险评分的数据可信程度。
+          example: 0.82
         reasons:
           type: array
           minItems: 1
@@ -367,7 +375,7 @@ components:
             type: string
         algorithmVersion:
           type: string
-          example: risk-v0.1
+          example: risk-v0.2
 
     SubmitFeedbackRequest:
       type: object
@@ -437,7 +445,7 @@ components:
 
     ErrorCode:
       type: string
-      description: V0.1 稳定、可供前端分支处理的错误码。
+      description: 稳定、可供前端分支处理的错误码。
       enum:
         - VALIDATION_FAILED
         - NO_RECOMMENDATION_AVAILABLE

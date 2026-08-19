@@ -138,7 +138,7 @@ def inspect_operations(document: dict[str, Any]) -> None:
         if method in {"get", "post", "put", "patch", "delete"}
     }
     if actual != set(EXPECTED_OPERATIONS):
-        fail(f"operation set differs from V0.1 contract: {sorted(actual)}")
+        fail(f"operation set differs from V0.2 contract: {sorted(actual)}")
 
     operation_ids: set[str] = set()
     for (path, method), (operation_id, success_code) in EXPECTED_OPERATIONS.items():
@@ -194,7 +194,7 @@ def inspect_examples_and_defaults(document: dict[str, Any], node: Any, location:
 def inspect_feedback_shape(document: dict[str, Any]) -> None:
     feedback = document["components"]["schemas"]["SubmitFeedbackRequest"]
     if set(feedback.get("properties", {})) != {"result"}:
-        fail("SubmitFeedbackRequest must contain only result in V0.1")
+        fail("SubmitFeedbackRequest must contain only result in V0.2")
     if feedback.get("required") != ["result"]:
         fail("SubmitFeedbackRequest.result must be required")
 

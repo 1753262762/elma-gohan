@@ -8,6 +8,7 @@ import com.elma.gohan.controller.api.RestaurantSummary;
 import com.elma.gohan.controller.api.RiskAssessment;
 import com.elma.gohan.controller.api.SubmitFeedbackRequest;
 import com.elma.gohan.domain.recommendation.RecommendationEngine;
+import com.elma.gohan.domain.recommendation.HardFilter;
 import com.elma.gohan.domain.recommendation.RecommendationResult;
 import com.elma.gohan.domain.recommendation.RestaurantCandidate;
 import com.elma.gohan.domain.restaurant.DataCompleteness;
@@ -15,6 +16,7 @@ import com.elma.gohan.domain.restaurant.Location;
 import com.elma.gohan.domain.restaurant.Restaurant;
 import com.elma.gohan.domain.restaurant.SearchCondition;
 import com.elma.gohan.domain.risk.RiskEngine;
+import com.elma.gohan.domain.risk.RiskFactors;
 import com.elma.gohan.domain.risk.RiskLevel;
 import com.elma.gohan.domain.risk.RiskResult;
 import com.elma.gohan.infrastructure.persistence.RecommendationCandidateEntity;
@@ -27,8 +29,6 @@ import com.elma.gohan.infrastructure.persistence.RiskResultEntity;
 import com.elma.gohan.infrastructure.persistence.RiskResultRepository;
 import com.elma.gohan.infrastructure.persistence.UserFeedbackEntity;
 import com.elma.gohan.infrastructure.persistence.UserFeedbackRepository;
-import com.elma.gohan.infrastructure.persistence.UserPreferenceEntity;
-import com.elma.gohan.infrastructure.persistence.UserPreferenceRepository;
 import com.elma.gohan.provider.evidence.EvidenceProvider;
 import com.elma.gohan.provider.evidence.RestaurantEvidence;
 import com.elma.gohan.provider.poi.PoiProvider;
@@ -41,15 +41,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 推荐编排:POI -> 风险 -> 排序 -> 候选池落库 -> reroll 游标 -> 反馈。
+ * 推荐编排:POI -> 硬过滤 -> Evidence -> 风险 -> 排序 -> 候选池落库 -> reroll -> 反馈画像。
  */
 @Service
 public class RecommendationService {
+
+    private static final Logger log = LoggerFactory.getLogger(RecommendationService.class);
 
     private static final Set<Integer> ALLOWED_RADIUS = Set.of(500, 1000, 2000, 3000);
     private static final int MAX_ALTERNATIVES = 5;
@@ -59,36 +62,38 @@ public class RecommendationService {
     private final EvidenceProvider evidenceProvider;
     private final RiskEngine riskEngine;
     private final RecommendationEngine recommendationEngine;
+    private final HardFilter hardFilter;
+    private final TasteProfileService tasteProfileService;
     private final RecommendationProperties recommendationProperties;
     private final RestaurantRepository restaurantRepository;
     private final RiskResultRepository riskResultRepository;
     private final RecommendationLogRepository logRepository;
     private final RecommendationCandidateRepository candidateRepository;
     private final UserFeedbackRepository feedbackRepository;
-    private final UserPreferenceRepository preferenceRepository;
     private final ObjectMapper objectMapper;
 
     public RecommendationService(PoiProvider poiProvider, EvidenceProvider evidenceProvider,
                                  RiskEngine riskEngine, RecommendationEngine recommendationEngine,
+                                 HardFilter hardFilter, TasteProfileService tasteProfileService,
                                  RecommendationProperties recommendationProperties,
                                  RestaurantRepository restaurantRepository,
                                  RiskResultRepository riskResultRepository,
                                  RecommendationLogRepository logRepository,
                                  RecommendationCandidateRepository candidateRepository,
                                  UserFeedbackRepository feedbackRepository,
-                                 UserPreferenceRepository preferenceRepository,
                                  ObjectMapper objectMapper) {
         this.poiProvider = poiProvider;
         this.evidenceProvider = evidenceProvider;
         this.riskEngine = riskEngine;
         this.recommendationEngine = recommendationEngine;
+        this.hardFilter = hardFilter;
+        this.tasteProfileService = tasteProfileService;
         this.recommendationProperties = recommendationProperties;
         this.restaurantRepository = restaurantRepository;
         this.riskResultRepository = riskResultRepository;
         this.logRepository = logRepository;
         this.candidateRepository = candidateRepository;
         this.feedbackRepository = feedbackRepository;
-        this.preferenceRepository = preferenceRepository;
         this.objectMapper = objectMapper;
     }
 
@@ -109,19 +114,24 @@ public class RecommendationService {
 
         List<Restaurant> pois = poiProvider.nearby(
                 new Location(request.latitude(), request.longitude()), condition);
+        List<Restaurant> eligible = hardFilter.filter(pois, condition);
+        if (eligible.isEmpty()) {
+            throw new NoRecommendationAvailableException("附近暂时没有符合条件的餐厅,请放宽距离或预算");
+        }
 
-        double poolAvgPrice = pois.stream()
+        double poolAvgPrice = eligible.stream()
                 .filter(r -> r.averagePrice() != null)
                 .mapToInt(Restaurant::averagePrice)
                 .average().orElse(0);
         Map<String, RiskResult> risks = riskEngine.evaluateAll(
-                pois, r -> {
-                    RestaurantEvidence evidence = evidenceProvider.getEvidence(r);
+                eligible, r -> {
+                    RestaurantEvidence evidence = safeEvidence(r);
                     return poolAvgPrice > 0 ? evidence.withPoolAveragePrice(poolAvgPrice) : evidence;
                 });
 
         RecommendationResult result = recommendationEngine.recommend(
-                pois, risks, new com.elma.gohan.domain.recommendation.UserPreference(condition));
+                eligible, risks, new com.elma.gohan.domain.recommendation.UserPreference(
+                        condition, tasteProfileService.load(anonymousUserId)));
         if (result.pool().isEmpty()) {
             throw new NoRecommendationAvailableException("附近暂时没有符合条件的餐厅,请放宽距离或预算");
         }
@@ -136,7 +146,8 @@ public class RecommendationService {
             Restaurant saved = upsertRestaurant(candidate.restaurant(), now);
             riskResultRepository.save(new RiskResultEntity(
                     UUID.randomUUID(), saved.id(), candidate.risk().riskScore(),
-                    candidate.risk().riskLevel().name(), toJson(candidate.risk().reasons()),
+                    candidate.risk().riskLevel().name(), candidate.risk().confidence(),
+                    toJson(candidate.risk().factors()), toJson(candidate.risk().reasons()),
                     candidate.risk().algorithmVersion(), now));
             persisted.add(new RestaurantCandidate(
                     saved, candidate.risk(), candidate.lowRegretScore(), candidate.reasons()));
@@ -152,7 +163,7 @@ public class RecommendationService {
         conditionSnapshot.put("dislikes", condition.dislikes());
         logRepository.save(new RecommendationLogEntity(
                 logId, anonymousUserId, toJson(conditionSnapshot),
-                persisted.size(), first.restaurant().id(),
+                persisted.size(), first.restaurant().id(), first.restaurant().id(),
                 first.risk().riskScore(), first.lowRegretScore(),
                 first.risk().algorithmVersion(), result.algorithmVersion(), now));
 
@@ -162,12 +173,10 @@ public class RecommendationService {
                     UUID.randomUUID(), logId, candidate.restaurant().id(), i + 1,
                     candidate.restaurant().distanceMeters(),
                     candidate.risk().riskScore(), candidate.risk().riskLevel().name(),
+                    candidate.risk().confidence(), toJson(candidate.risk().factors()),
                     toJson(candidate.risk().reasons()), candidate.risk().algorithmVersion(),
                     candidate.lowRegretScore(), toJson(candidate.reasons()), i == 0));
         }
-
-        preferenceRepository.save(new UserPreferenceEntity(
-                UUID.randomUUID(), anonymousUserId, toJson(conditionSnapshot), now));
 
         return toResponse(logId, persisted.get(0), persisted.size() - 1);
     }
@@ -195,7 +204,7 @@ public class RecommendationService {
             target = candidates.get(0);
             remaining = 0;
         }
-        log.updateCurrent(target.getRestaurantId(), target.getRiskScore(), target.getLowRegretScore());
+        log.updateCurrent(target.getRestaurantId());
 
         return toResponse(log.getId(), toView(log.getId(), target), remaining);
     }
@@ -205,9 +214,18 @@ public class RecommendationService {
                                            SubmitFeedbackRequest request) {
         RecommendationLogEntity log = findLog(anonymousUserId, recommendationId);
         LocalDateTime now = LocalDateTime.now(ZONE);
+        var currentProfile = tasteProfileService.load(anonymousUserId);
+        RestaurantEntity restaurantEntity = restaurantRepository.findById(log.getCurrentRestaurantId())
+                .orElseThrow(() -> new RecommendationNotFoundException("推荐已失效,请重新获取"));
+        RecommendationCandidateEntity currentCandidate = candidateRepository
+                .findByRecommendationLogIdAndRestaurantId(log.getId(), log.getCurrentRestaurantId())
+                .orElseThrow(() -> new RecommendationNotFoundException("推荐已失效,请重新获取"));
         UserFeedbackEntity feedback = feedbackRepository.save(new UserFeedbackEntity(
                 UUID.randomUUID(), log.getId(), log.getCurrentRestaurantId(), anonymousUserId,
                 request.result().name(), now));
+        tasteProfileService.update(anonymousUserId, currentProfile,
+                toDomain(restaurantEntity, currentCandidate.getDistanceMeters()),
+                currentCandidate.getDistanceMeters(), request.result().name(), now);
         return new FeedbackResponse(
                 feedback.getId().toString(), log.getId().toString(),
                 feedback.getRestaurantId().toString(), feedback.getResult(),
@@ -249,6 +267,7 @@ public class RecommendationService {
                 .orElseThrow(() -> new RecommendationNotFoundException("推荐已失效,请重新获取"));
         Restaurant restaurant = toDomain(e, c.getDistanceMeters());
         RiskResult risk = new RiskResult(c.getRiskScore(), RiskLevel.valueOf(c.getRiskLevel()),
+                c.getRiskConfidence(), fromFactorsJson(c.getRiskFactorsJson()),
                 fromJson(c.getRiskReasonsJson()), c.getRiskAlgorithmVersion());
         return new RestaurantCandidate(restaurant, risk, c.getLowRegretScore(),
                 fromJson(c.getReasonsJson()));
@@ -267,6 +286,7 @@ public class RecommendationService {
                         r.distanceMeters(), walkingMinutes, r.averagePrice(), r.rating(),
                         r.businessStatus().name()),
                 new RiskAssessment(candidate.risk().riskScore(), candidate.risk().riskLevel().name(),
+                        candidate.risk().confidence(),
                         candidate.risk().reasons(), candidate.risk().algorithmVersion()),
                 candidate.reasons(),
                 Math.min(MAX_ALTERNATIVES, Math.max(0, alternativesRemaining)));
@@ -285,6 +305,24 @@ public class RecommendationService {
             return objectMapper.readValue(json, new TypeReference<List<String>>() { });
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("JSON 反序列化失败", e);
+        }
+    }
+
+    private RiskFactors fromFactorsJson(String json) {
+        try {
+            return objectMapper.readValue(json, RiskFactors.class);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("风险因子反序列化失败", e);
+        }
+    }
+
+    private RestaurantEvidence safeEvidence(Restaurant restaurant) {
+        try {
+            RestaurantEvidence evidence = evidenceProvider.getEvidence(restaurant);
+            return evidence == null ? RestaurantEvidence.unavailable("UNKNOWN") : evidence;
+        } catch (RuntimeException exception) {
+            log.warn("EvidenceProvider 获取失败，餐厅 {} 已降级", restaurant.sourcePoiId(), exception);
+            return RestaurantEvidence.unavailable("PROVIDER");
         }
     }
 }

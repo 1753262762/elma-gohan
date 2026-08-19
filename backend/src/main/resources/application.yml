@@ -39,29 +39,74 @@ elma:
       "050600": { code: TEA, label: 茶座 }
       "050700": { code: DRINKS, label: 冷饮店 }
       "050900": { code: FOOD_COURT, label: 美食广场 }
+  evidence:
+    provider: ${EVIDENCE_PROVIDER:file}
+    location: ${EVIDENCE_FILE:classpath:evidence/restaurant-evidence.json}
+    max-reviews-per-restaurant: 200
   risk:
-    algorithm-version: risk-v0.1
+    algorithm-version: risk-v0.2
     rating:
       fair-min: 4.0
       good-min: 4.2
       excellent-min: 4.5
-    points:
-      rating-good: 5
-      rating-fair: 15
-      rating-poor: 30
-      rating-missing: 30
-      review-count-low: 10
-      review-count-threshold: 10
+      excellent-risk: 0
+      good-risk: 20
+      fair-risk: 60
+      poor-risk: 100
+      missing-risk: 100
+    template:
+      min-reviews: 10
+      ngram-size: 3
+      min-text-length: 8
+      similarity-threshold: 0.82
+      ratio-start: 0.10
+      ratio-full: 0.50
+    burst:
+      min-reviews: 20
+      window-days: 3
+      min-peak-count: 12
+      min-history-days: 14
+      ratio-start: 3.0
+      ratio-full: 8.0
+    trend:
+      recent-days: 30
+      baseline-days: 90
+      min-recent-reviews: 5
+      min-baseline-reviews: 10
+      rating-delta: 0.4
+      negative-rating-max: 2.0
+      negative-ratio-delta: 0.2
+      up-risk: 0
+      stable-risk: 10
+      down-risk: 100
+      unknown-risk: 0
+    data-insufficient:
+      no-data-risk: 85
+      unavailable-risk: 90
+      target-reviews: 30
+      sample-shortage-max-risk: 80
+      poi-review-count-threshold: 10
+      review-count-missing: 15
       opening-hours-missing: 10
       price-missing: 5
-      price-anomaly: 10
+      price-anomaly: 20
+    confidence:
+      poi-weight: 0.25
+      evidence-weight: 0.75
+      target-reviews: 30
+    weights:
+      rating: 0.25
+      template: 0.20
+      burst: 0.15
+      trend: 0.15
+      data-insufficient: 0.25
     price-anomaly-ratio: 1.5
     levels:
       low-max-inclusive: 20
       medium-low-max-inclusive: 40
       medium-max-inclusive: 60
   recommendation:
-    algorithm-version: lowregret-v0.12
+    algorithm-version: recommendation-v0.2
     top-k: 10
     pool-size: 6
     walking-speed-meters-per-minute: 80
@@ -72,3 +117,18 @@ elma:
       category: 10
       completeness: 10
       risk: 20
+    uncertainty-risk: 50
+    taste:
+      max-adjustment: 15
+      category-weight: 0.50
+      price-weight: 0.25
+      distance-weight: 0.25
+  taste:
+    decay: 0.95
+    max-absolute-weight: 3.0
+    feedback:
+      like: 1.0
+      normal: 0.1
+      dislike: -1.0
+    price-band-upper-bounds: [30, 60, 100]
+    distance-band-upper-bounds: [500, 1000, 2000]

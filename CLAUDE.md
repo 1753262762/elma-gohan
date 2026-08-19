@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 仓库现状
 
-这是「ELMA 家今天的饭」前后端仓库。V0.12 在 V0.1 闭环上增加默认正餐、四类筛选、候选多样化和最多 5 次重新选择；接口事实源仍是 [contracts/openapi.yaml](contracts/openapi.yaml)。当前增量规则见 [docs/V0.12-filtering-and-reroll.md](docs/V0.12-filtering-and-reroll.md)。
+这是「ELMA 家今天的饭」前后端仓库。当前版本为 V0.2.0：保留 V0.12 的默认正餐、四类筛选、候选多样化和最多 5 次重新选择，新增 File Evidence、`risk-v0.2` 与 TasteProfile 闭环。接口事实源是 [contracts/openapi.yaml](contracts/openapi.yaml)，当前增量规则见 [docs/V0.2-evidence-risk-and-taste.md](docs/V0.2-evidence-risk-and-taste.md)。
 
 两份方案文档（`elma-gohan_V0.1_Demo_技术与产品方案.md`、`elma-gohan产品介绍.md`）是项目起点，不得覆盖或重写。
 
@@ -58,15 +58,15 @@ cd backend && mvn test
 四个核心接口必须保持独立、可替换：
 
 - `PoiProvider`（V0.1 实现 `AmapPoiProvider`）— 附近餐厅查询；第三方数据必须先转成内部 `Restaurant` 标准模型（含 `sourcePoiId`、`dataCompleteness` 等），原始结构不得进入业务核心。
-- `EvidenceProvider`（V0.1 只有 `EmptyEvidenceProvider` 占位）— 多平台评论证据的扩展点。
-- `RiskEngine` — 可配置规则模型（非 ML），输出 `riskScore`(0~100)/`riskLevel`/`reasons[]`/`algorithmVersion`；阈值必须配置化，禁止散落在代码中；高风险项（61+）不主动推荐。
-- `RecommendationEngine` — 硬过滤（距离/预算/品类/营业状态）→ 风险过滤 → LowRegretScore 排序 → Top-10 多样化重排 → 最多 6 家候选池，不做纯随机。
+- `EvidenceProvider` — `FileEvidenceProvider` 默认启用，第三方 DTO 必须映射成统一 `RestaurantEvidence`；失败逐餐厅降级，`EmptyEvidenceProvider` 保留作 fallback。
+- `RiskEngine` — `risk-v0.2` 可配置规则模型（非 ML），输出五项 factors、`riskScore`(0~100)、`riskLevel`、`confidence`、`reasons[]` 和版本；高风险项（61+）不主动推荐。
+- `RecommendationEngine` — 硬过滤 → Evidence/Risk → 高风险剔除 → LowRegretScore（含可信度校正与 TasteProfile）→ Top-10 多样化 → 有限加权随机 → 最多 6 家候选池。
 
-推荐流程：定位 → POI 获取 → 硬过滤 → 风险过滤 → 排序 → 主动推荐一家 → 反馈。每次推荐必须落 `recommendation_log`（请求条件快照、候选数、两种算法版本、分数），用于后续比较不同 RiskEngine 版本的踩坑率。数据库用 Flyway 建表，核心表：`restaurant`、`risk_result`、`recommendation_log`、`recommendation_candidate`、`user_feedback`、`user_preference`。
+推荐流程：定位 → POI 获取 → 硬过滤 → Evidence → Risk → 高风险过滤 → 排序 → 主动推荐一家 → 反馈更新画像。每次推荐必须落 `recommendation_log`（请求条件快照、候选数、首次推荐餐厅、两种算法版本、分数），用于后续比较不同 RiskEngine 版本的踩坑率。数据库用 Flyway 建表，核心表：`restaurant`、`risk_result`、`recommendation_log`、`recommendation_candidate`、`user_feedback`、`user_preference`。
 
-## V0.1 明确不做
+## V0.2 明确不做
 
-不因“以后可能需要”提前实现：登录、画像训练、评论爬取、多平台证据、支付/团购/外卖、排行榜、社交、Redis、消息队列、微服务、Docker 集群、Python/AI Runtime、向量搜索。详细禁止清单见技术方案第 30 节。
+不因“以后可能需要”提前实现：登录、真实平台爬虫、支付/团购/外卖、排行榜、社交、Redis、消息队列、微服务、Python/AI Runtime、Embedding、向量搜索、协同过滤。真实远程 Evidence 的批量、缓存和超时隔离留待后续。
 
 ## Git 约定
 

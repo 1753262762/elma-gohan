@@ -30,6 +30,9 @@ public class RecommendationLogEntity {
     @Column(name = "current_restaurant_id", nullable = false)
     private UUID currentRestaurantId;
 
+    @Column(name = "recommended_restaurant_id", nullable = false)
+    private UUID recommendedRestaurantId;
+
     @Column(name = "risk_score", nullable = false)
     private int riskScore;
 
@@ -49,7 +52,8 @@ public class RecommendationLogEntity {
     }
 
     public RecommendationLogEntity(UUID id, UUID anonymousUserId, String requestConditionJson,
-                                   int candidateCount, UUID currentRestaurantId, int riskScore,
+                                   int candidateCount, UUID currentRestaurantId,
+                                   UUID recommendedRestaurantId, int riskScore,
                                    double lowRegretScore, String riskAlgorithmVersion,
                                    String recommendationAlgorithmVersion, LocalDateTime createdAt) {
         this.id = id;
@@ -57,6 +61,7 @@ public class RecommendationLogEntity {
         this.requestConditionJson = requestConditionJson;
         this.candidateCount = candidateCount;
         this.currentRestaurantId = currentRestaurantId;
+        this.recommendedRestaurantId = recommendedRestaurantId;
         this.riskScore = riskScore;
         this.lowRegretScore = lowRegretScore;
         this.riskAlgorithmVersion = riskAlgorithmVersion;
@@ -69,15 +74,14 @@ public class RecommendationLogEntity {
     public String getRequestConditionJson() { return requestConditionJson; }
     public int getCandidateCount() { return candidateCount; }
     public UUID getCurrentRestaurantId() { return currentRestaurantId; }
+    public UUID getRecommendedRestaurantId() { return recommendedRestaurantId; }
     public int getRiskScore() { return riskScore; }
     public double getLowRegretScore() { return lowRegretScore; }
     public String getRiskAlgorithmVersion() { return riskAlgorithmVersion; }
     public String getRecommendationAlgorithmVersion() { return recommendationAlgorithmVersion; }
     public LocalDateTime getCreatedAt() { return createdAt; }
 
-    public void updateCurrent(UUID currentRestaurantId, int riskScore, double lowRegretScore) {
+    public void updateCurrent(UUID currentRestaurantId) {
         this.currentRestaurantId = currentRestaurantId;
-        this.riskScore = riskScore;
-        this.lowRegretScore = lowRegretScore;
     }
 }

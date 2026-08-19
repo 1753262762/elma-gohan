@@ -1,0 +1,18 @@
+{
+  "restaurants": [
+    {
+      "source": "AMAP",
+      "sourcePoiId": "POI-FILE",
+      "evidenceSource": "TEST_FILE",
+      "fetchedAt": "2026-08-19T00:00:00Z",
+      "reviews": [
+        {
+          "reviewId": "R-1",
+          "text": "真实到店体验",
+          "rating": 4.5,
+          "createdAt": "2026-08-18T00:00:00Z"
+        }
+      ]
+    }
+  ]
+}

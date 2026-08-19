@@ -1,5 +1,6 @@
 logs/
 backend/target/
+backend/.maven-repo/
 backend/hs_err_pid*.log
 backend/replay_pid*.log
 *.iml

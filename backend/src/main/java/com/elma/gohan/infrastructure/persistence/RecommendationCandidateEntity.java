@@ -34,6 +34,13 @@ public class RecommendationCandidateEntity {
     @Column(name = "risk_level", length = 16, nullable = false)
     private String riskLevel;
 
+    @Column(name = "risk_confidence", nullable = false)
+    private double riskConfidence;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "risk_factors_json", columnDefinition = "jsonb", nullable = false)
+    private String riskFactorsJson;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "risk_reasons_json", columnDefinition = "jsonb", nullable = false)
     private String riskReasonsJson;
@@ -56,6 +63,7 @@ public class RecommendationCandidateEntity {
 
     public RecommendationCandidateEntity(UUID id, UUID recommendationLogId, UUID restaurantId, int slot,
                                          int distanceMeters, int riskScore, String riskLevel,
+                                         double riskConfidence, String riskFactorsJson,
                                          String riskReasonsJson, String riskAlgorithmVersion,
                                          double lowRegretScore, String reasonsJson, boolean shown) {
         this.id = id;
@@ -65,6 +73,8 @@ public class RecommendationCandidateEntity {
         this.distanceMeters = distanceMeters;
         this.riskScore = riskScore;
         this.riskLevel = riskLevel;
+        this.riskConfidence = riskConfidence;
+        this.riskFactorsJson = riskFactorsJson;
         this.riskReasonsJson = riskReasonsJson;
         this.riskAlgorithmVersion = riskAlgorithmVersion;
         this.lowRegretScore = lowRegretScore;
@@ -79,6 +89,8 @@ public class RecommendationCandidateEntity {
     public int getDistanceMeters() { return distanceMeters; }
     public int getRiskScore() { return riskScore; }
     public String getRiskLevel() { return riskLevel; }
+    public double getRiskConfidence() { return riskConfidence; }
+    public String getRiskFactorsJson() { return riskFactorsJson; }
     public String getRiskReasonsJson() { return riskReasonsJson; }
     public String getRiskAlgorithmVersion() { return riskAlgorithmVersion; }
     public double getLowRegretScore() { return lowRegretScore; }
