@@ -1,0 +1,446 @@
+openapi: 3.0.3
+info:
+  title: ELMA 家今天的饭 API
+  version: 0.1.0
+  description: |
+    V0.1 Demo 的前后端接口契约。服务端负责 POI 获取、风险过滤、
+    Low Regret 排序和候选池管理；客户端不得自行重算风险或排序。
+servers:
+  - url: /api/v1
+    description: 当前服务
+tags:
+  - name: Recommendations
+    description: 推荐、换一家与反馈闭环
+
+paths:
+  /recommendations:
+    post:
+      tags: [Recommendations]
+      operationId: createRecommendation
+      summary: 获取一家餐厅推荐
+      description: |
+        根据当前位置和用餐条件建立推荐会话。服务端从附近 POI 中完成硬过滤、
+        风险评估和 Low Regret 排序，并返回且只返回一家餐厅。
+      parameters:
+        - $ref: '#/components/parameters/AnonymousUserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRecommendationRequest'
+            example:
+              latitude: 28.2282
+              longitude: 112.9388
+              radius: 1000
+              maxBudget: 40
+              category: ANY
+              dislikes: [香菜]
+      responses:
+        '201':
+          description: 推荐会话已建立
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecommendationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          description: 条件合法，但附近没有可推荐的餐厅
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: NO_RECOMMENDATION_AVAILABLE
+                message: 附近暂时没有符合条件的餐厅，请放宽距离或预算
+                traceId: 01J5EXAMPLETRACE
+        '502':
+          $ref: '#/components/responses/PoiProviderError'
+
+  /recommendations/{id}/reroll:
+    post:
+      tags: [Recommendations]
+      operationId: rerollRecommendation
+      summary: 换一家
+      description: |
+        只在原推荐会话保存的优质候选池中切换，不重新查询或随机抽取全部 POI。
+        初次推荐为 A，最多展示两个替代项 B/C；候选耗尽后的请求返回初始 A，
+        且 `alternativesRemaining=0`，不会产生第四个选择。
+      parameters:
+        - $ref: '#/components/parameters/RecommendationId'
+        - $ref: '#/components/parameters/AnonymousUserId'
+      responses:
+        '200':
+          description: 当前应展示的餐厅
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecommendationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/RecommendationNotFound'
+
+  /recommendations/{id}/feedback:
+    post:
+      tags: [Recommendations]
+      operationId: submitRecommendationFeedback
+      summary: 提交用户反馈
+      description: |
+        记录用户对该推荐会话当前展示餐厅的反馈。V0.1 每次提交生成一条反馈记录，
+        不触发模型训练或即时改写排序。
+      parameters:
+        - $ref: '#/components/parameters/RecommendationId'
+        - $ref: '#/components/parameters/AnonymousUserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitFeedbackRequest'
+            example:
+              result: LIKE
+      responses:
+        '201':
+          description: 反馈已记录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/RecommendationNotFound'
+
+components:
+  parameters:
+    AnonymousUserId:
+      name: X-Anonymous-User-Id
+      in: header
+      required: true
+      description: 客户端首次启动生成并持久化的匿名 UUID；V0.1 不要求登录。
+      schema:
+        type: string
+        format: uuid
+    RecommendationId:
+      name: id
+      in: path
+      required: true
+      description: 推荐会话 ID
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: 请求格式或字段校验失败
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: VALIDATION_FAILED
+            message: 请求参数不合法
+            fieldErrors:
+              - field: radius
+                message: 只能是 500、1000、2000 或 3000
+            traceId: 01J5EXAMPLETRACE
+    RecommendationNotFound:
+      description: 推荐会话不存在、已过期，或不属于当前匿名用户
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: RECOMMENDATION_NOT_FOUND
+            message: 推荐已失效，请重新获取
+            traceId: 01J5EXAMPLETRACE
+    PoiProviderError:
+      description: 上游 POI 服务暂时不可用
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: POI_PROVIDER_UNAVAILABLE
+            message: 附近餐厅服务暂时不可用，请稍后再试
+            traceId: 01J5EXAMPLETRACE
+
+  schemas:
+    CreateRecommendationRequest:
+      type: object
+      additionalProperties: false
+      required: [latitude, longitude]
+      properties:
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+          description: "GCJ-02 纬度；客户端通过 `uni.getLocation({ type: 'gcj02' })` 获取。"
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+          description: GCJ-02 经度。
+        radius:
+          type: integer
+          enum: [500, 1000, 2000, 3000]
+          default: 1000
+          description: 搜索半径，单位米。
+        maxBudget:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 10000
+          default: null
+          description: 人均最高预算，单位人民币元；null 表示不限。
+        category:
+          $ref: '#/components/schemas/CategoryFilterCode'
+        dislikes:
+          type: array
+          default: []
+          maxItems: 10
+          uniqueItems: true
+          description: 不想吃的食材、口味或品类短语；服务端负责解释和过滤。
+          items:
+            type: string
+            minLength: 1
+            maxLength: 30
+
+    RecommendationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - recommendationId
+        - restaurant
+        - risk
+        - reasons
+        - alternativesRemaining
+      properties:
+        recommendationId:
+          type: string
+          format: uuid
+          description: 一次条件请求对应的推荐会话 ID，换一家和反馈时复用。
+        restaurant:
+          $ref: '#/components/schemas/RestaurantSummary'
+        risk:
+          $ref: '#/components/schemas/RiskAssessment'
+        reasons:
+          type: array
+          minItems: 1
+          maxItems: 5
+          description: 服务端生成的推荐理由，前端仅展示。
+          items:
+            type: string
+        alternativesRemaining:
+          type: integer
+          minimum: 0
+          maximum: 2
+          description: 还可展示的未见替代餐厅数量。
+      example:
+        recommendationId: 3c34f61d-cb41-4850-aafe-1505f3312f06
+        restaurant:
+          id: 8322a6eb-186b-4be7-b4e5-980c9ef93042
+          name: 老街牛肉粉
+          latitude: 28.2291
+          longitude: 112.9412
+          address: 麓山南路 123 号
+          category:
+            code: NOODLES
+            label: 粉面
+          distanceMeters: 620
+          walkingMinutes: 8
+          averagePrice: 26
+          rating: 4.5
+          businessStatus: OPEN
+        risk:
+          riskScore: 18
+          riskLevel: LOW
+          reasons: [评分稳定, 店铺信息完整, 价格位于正常范围]
+          algorithmVersion: risk-v0.1
+        reasons: [距离近, 预算合适, 基础评分稳定, 数据完整度较高]
+        alternativesRemaining: 2
+
+    RestaurantSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - latitude
+        - longitude
+        - address
+        - category
+        - distanceMeters
+        - walkingMinutes
+        - businessStatus
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: ELMA 内部标准餐厅 ID，不暴露第三方 Key。
+        name:
+          type: string
+          maxLength: 120
+        latitude:
+          type: number
+          format: double
+          description: GCJ-02 纬度，可直接用于小程序地图导航。
+        longitude:
+          type: number
+          format: double
+          description: GCJ-02 经度，可直接用于小程序地图导航。
+        address:
+          type: string
+          maxLength: 255
+        category:
+          $ref: '#/components/schemas/RestaurantCategory'
+        distanceMeters:
+          type: integer
+          minimum: 0
+        walkingMinutes:
+          type: integer
+          minimum: 1
+          description: V0.1 的服务端步行时间估算值，不代表实时路线规划。
+        averagePrice:
+          type: integer
+          nullable: true
+          minimum: 0
+          description: 人均价格，单位人民币元；上游缺失时为 null。
+        rating:
+          type: number
+          format: double
+          nullable: true
+          minimum: 0
+          maximum: 5
+          description: POI 数据源原始评分；缺失时为 null。
+        businessStatus:
+          type: string
+          enum: [OPEN, CLOSED, UNKNOWN]
+
+    RestaurantCategory:
+      type: object
+      additionalProperties: false
+      required: [code, label]
+      properties:
+        code:
+          $ref: '#/components/schemas/RestaurantCategoryCode'
+        label:
+          type: string
+          maxLength: 30
+
+    CategoryFilterCode:
+      type: string
+      default: ANY
+      pattern: '^[A-Z][A-Z0-9_]{0,31}$'
+      maxLength: 32
+      example: ANY
+      description: |
+        V0.1 已确定的默认值只有 ANY（随便）。其他品类代码由后续确认的产品品类表定义，
+        接口把代码作为不透明值处理，前端不得自行映射为高德分类代码。
+
+    RestaurantCategoryCode:
+      type: string
+      pattern: '^[A-Z][A-Z0-9_]{0,31}$'
+      maxLength: 32
+      example: NOODLES
+      description: ELMA 标准品类代码；展示名称使用同对象中的 label。
+
+    RiskAssessment:
+      type: object
+      additionalProperties: false
+      required: [riskScore, riskLevel, reasons, algorithmVersion]
+      properties:
+        riskScore:
+          type: integer
+          minimum: 0
+          maximum: 100
+        riskLevel:
+          type: string
+          enum: [LOW, MEDIUM_LOW, MEDIUM, HIGH]
+        reasons:
+          type: array
+          minItems: 1
+          items:
+            type: string
+        algorithmVersion:
+          type: string
+          example: risk-v0.1
+
+    SubmitFeedbackRequest:
+      type: object
+      additionalProperties: false
+      required: [result]
+      properties:
+        result:
+          $ref: '#/components/schemas/FeedbackResult'
+
+    FeedbackResponse:
+      type: object
+      additionalProperties: false
+      required: [feedbackId, recommendationId, restaurantId, result, recordedAt]
+      properties:
+        feedbackId:
+          type: string
+          format: uuid
+        recommendationId:
+          type: string
+          format: uuid
+        restaurantId:
+          type: string
+          format: uuid
+        result:
+          $ref: '#/components/schemas/FeedbackResult'
+        recordedAt:
+          type: string
+          format: date-time
+      example:
+        feedbackId: f57b640c-e4b2-4702-aa2f-2a9dacaf6910
+        recommendationId: 3c34f61d-cb41-4850-aafe-1505f3312f06
+        restaurantId: 8322a6eb-186b-4be7-b4e5-980c9ef93042
+        result: LIKE
+        recordedAt: '2026-08-19T09:30:00+08:00'
+
+    FeedbackResult:
+      type: string
+      enum: [LIKE, NORMAL, DISLIKE]
+
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message, traceId]
+      properties:
+        code:
+          $ref: '#/components/schemas/ErrorCode'
+        message:
+          type: string
+          description: 可直接展示给用户的中文错误提示。
+        fieldErrors:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldError'
+        traceId:
+          type: string
+          description: 用于服务端日志排查，不包含敏感信息。
+
+    FieldError:
+      type: object
+      additionalProperties: false
+      required: [field, message]
+      properties:
+        field:
+          type: string
+        message:
+          type: string
+
+    ErrorCode:
+      type: string
+      description: V0.1 稳定、可供前端分支处理的错误码。
+      enum:
+        - VALIDATION_FAILED
+        - NO_RECOMMENDATION_AVAILABLE
+        - RECOMMENDATION_NOT_FOUND
+        - POI_PROVIDER_UNAVAILABLE
