@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.elma.gohan.TestRestaurants;
 import com.elma.gohan.config.RecommendationProperties;
+import com.elma.gohan.domain.restaurant.BusinessStatus;
+import com.elma.gohan.domain.restaurant.DataCompleteness;
 import com.elma.gohan.domain.restaurant.Restaurant;
 import com.elma.gohan.domain.restaurant.SearchCondition;
 import com.elma.gohan.domain.risk.RiskLevel;
@@ -27,17 +29,43 @@ class DefaultRecommendationEngineTest {
     }
 
     @Test
-    @DisplayName("8 家合格候选 -> 候选池大小 3,且互不相同")
-    void poolSizeThree() {
+    @DisplayName("8 家合格候选 -> 候选池大小 6,提供 5 次重新选择")
+    void poolSizeSix() {
         List<Restaurant> restaurants = java.util.stream.IntStream.rangeClosed(1, 8)
                 .mapToObj(i -> TestRestaurants.full("p" + i, 4.0 + i * 0.05, 200 + i * 10))
                 .toList();
         var result = engine.recommend(restaurants, risks(restaurants),
                 new UserPreference(new SearchCondition(1000, null, "ANY", List.of())));
-        assertThat(result.pool()).hasSize(3);
+        assertThat(result.pool()).hasSize(6);
         assertThat(result.pool()).extracting(c -> c.restaurant().sourcePoiId())
                 .doesNotHaveDuplicates();
-        assertThat(result.algorithmVersion()).isEqualTo("lowregret-v0.1");
+        assertThat(result.algorithmVersion()).isEqualTo("lowregret-v0.12");
+    }
+
+    @Test
+    @DisplayName("ANY 候选充足时六家在三个产品品类间均衡")
+    void anyCategoryPoolIsDiversified() {
+        List<Restaurant> restaurants = List.of(
+                categoryRestaurant("m1", "CHINESE", 4.9),
+                categoryRestaurant("m2", "FOREIGN", 4.8),
+                categoryRestaurant("m3", "FOOD_COURT", 4.7),
+                categoryRestaurant("f1", "SNACK", 4.6),
+                categoryRestaurant("f2", "SNACK", 4.5),
+                categoryRestaurant("f3", "SNACK", 4.4),
+                categoryRestaurant("d1", "DESSERT", 4.9),
+                categoryRestaurant("d2", "COFFEE", 4.8),
+                categoryRestaurant("d3", "DRINKS", 4.7));
+
+        var result = engine.recommend(restaurants, risks(restaurants),
+                new UserPreference(new SearchCondition(1000, null, "ANY", List.of())));
+
+        Map<String, Long> counts = result.pool().stream().collect(Collectors.groupingBy(
+                candidate -> com.elma.gohan.domain.restaurant.CategoryFilter.groupCodeForRestaurant(
+                        candidate.restaurant().categoryCode()),
+                Collectors.counting()));
+        assertThat(counts).containsEntry("MEAL", 2L)
+                .containsEntry("FAST_FOOD", 2L)
+                .containsEntry("DESSERT_DRINK", 2L);
     }
 
     @Test
@@ -70,5 +98,11 @@ class DefaultRecommendationEngineTest {
         var result = engine.recommend(two, risks(two),
                 new UserPreference(new SearchCondition(1000, null, "ANY", List.of())));
         assertThat(result.pool()).hasSize(2);
+    }
+
+    private Restaurant categoryRestaurant(String id, String categoryCode, double rating) {
+        return new Restaurant(null, "AMAP", id, "餐厅" + id, 28.0, 112.0, 300,
+                categoryCode, categoryCode, rating, 100, 30,
+                BusinessStatus.UNKNOWN, "09:00-21:00", "地址", DataCompleteness.FULL);
     }
 }

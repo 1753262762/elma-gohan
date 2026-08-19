@@ -83,7 +83,7 @@ describe('result page acceptance states', () => {
   })
 
   it('shows reroll loading and replaces the view only with the server response', async () => {
-    recommendationStore.setCurrent(recommendation({ alternativesRemaining: 2 }), request)
+    recommendationStore.setCurrent(recommendation({ alternativesRemaining: 5 }), request)
     let finishReroll!: (value: RecommendationResponse) => void
     const rerollSpy = vi
       .spyOn(recommendationApi, 'rerollRecommendation')

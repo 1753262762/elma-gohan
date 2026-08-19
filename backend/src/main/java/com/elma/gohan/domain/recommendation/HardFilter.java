@@ -26,7 +26,7 @@ public class HardFilter {
         if (c.maxBudget() != null && r.averagePrice() != null && r.averagePrice() > c.maxBudget()) {
             return false;
         }
-        if (!c.categoryUnlimited() && !c.category().equalsIgnoreCase(r.categoryCode())) {
+        if (!c.categoryFilter().matches(r.categoryCode())) {
             return false;
         }
         if (r.businessStatus() == BusinessStatus.CLOSED) {

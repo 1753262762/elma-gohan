@@ -84,7 +84,7 @@ describe('V0.1 business flow', () => {
       longitude: 112.9388,
       radius: 1000,
       maxBudget: 40,
-      category: 'ANY',
+      category: 'MEAL',
       dislikes: ['香菜'],
     }
 

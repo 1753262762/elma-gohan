@@ -109,36 +109,35 @@ class RecommendationApiTest {
         assertThat(risk.get("reasons").size()).isGreaterThanOrEqualTo(1);
         assertThat(risk.get("algorithmVersion").asText()).isEqualTo("risk-v0.1");
         assertThat(body.get("reasons").size()).isBetween(1, 5);
-        assertThat(body.get("alternativesRemaining").asInt()).isBetween(0, 2);
+        assertThat(body.get("alternativesRemaining").asInt()).isBetween(0, 5);
         // 落库校验:推荐日志含条件快照与双算法版本
         Integer logs = jdbc.queryForObject(
                 "SELECT count(*) FROM recommendation_log WHERE request_condition_json IS NOT NULL "
                         + "AND risk_algorithm_version = 'risk-v0.1' "
-                        + "AND recommendation_algorithm_version = 'lowregret-v0.1'", Integer.class);
+                        + "AND recommendation_algorithm_version = 'lowregret-v0.12'", Integer.class);
         assertThat(logs).isEqualTo(1);
     }
 
     @Test
-    void rerollFlowShowsAtMostThreeCandidatesThenBackToA() throws Exception {
+    void rerollFlowOffersFiveAlternativesThenBackToInitial() throws Exception {
         String createBody = create(USER, """
                 {"latitude": 28.2282, "longitude": 112.9388}
                 """).getBody();
         JsonNode created = JSON.readTree(createBody);
         String recommendationId = created.get("recommendationId").asText();
-        assertThat(created.get("alternativesRemaining").asInt()).isEqualTo(2);
+        assertThat(created.get("alternativesRemaining").asInt()).isEqualTo(5);
 
         String a = created.get("restaurant").get("id").asText();
-        JsonNode second = reroll(USER, recommendationId);
-        String b = second.get("restaurant").get("id").asText();
-        assertThat(second.get("alternativesRemaining").asInt()).isEqualTo(1);
-        JsonNode third = reroll(USER, recommendationId);
-        String c = third.get("restaurant").get("id").asText();
-        assertThat(third.get("alternativesRemaining").asInt()).isEqualTo(0);
-        assertThat(a).isNotEqualTo(b);
-        assertThat(a).isNotEqualTo(c);
-        assertThat(b).isNotEqualTo(c);
+        java.util.Set<String> shown = new java.util.HashSet<>();
+        shown.add(a);
+        for (int remaining = 4; remaining >= 0; remaining--) {
+            JsonNode next = reroll(USER, recommendationId);
+            assertThat(next.get("alternativesRemaining").asInt()).isEqualTo(remaining);
+            assertThat(shown.add(next.get("restaurant").get("id").asText())).isTrue();
+        }
+        assertThat(shown).hasSize(6);
 
-        // 耗尽后返回初始 A,不产生第四家
+        // 耗尽后返回初始推荐,不产生第七家
         JsonNode exhausted = reroll(USER, recommendationId);
         assertThat(exhausted.get("restaurant").get("id").asText()).isEqualTo(a);
         assertThat(exhausted.get("alternativesRemaining").asInt()).isEqualTo(0);
@@ -173,6 +172,17 @@ class RecommendationApiTest {
         assertThat(body.get("code").asText()).isEqualTo("VALIDATION_FAILED");
         assertThat(body.get("fieldErrors").get(0).get("field").asText()).isEqualTo("radius");
         assertThat(body.get("traceId")).isNotNull();
+    }
+
+    @Test
+    void unknownCategoryReturns400WithFieldError() throws Exception {
+        ResponseEntity<String> response = create(USER, """
+                {"latitude": 28.2282, "longitude": 112.9388, "category": "HOT_POT"}
+                """);
+        assertThat(response.getStatusCode().value()).isEqualTo(400);
+        JsonNode body = JSON.readTree(response.getBody());
+        assertThat(body.get("code").asText()).isEqualTo("VALIDATION_FAILED");
+        assertThat(body.get("fieldErrors").get(0).get("field").asText()).isEqualTo("category");
     }
 
     @Test

@@ -13,9 +13,9 @@
 
   <groupId>com.elma</groupId>
   <artifactId>gohan-backend</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
+  <version>0.12.0-SNAPSHOT</version>
   <name>elma-gohan-backend</name>
-  <description>ELMA 家今天的饭 V0.1 后端(模块化单体)</description>
+  <description>ELMA 家今天的饭 V0.12 后端(模块化单体)</description>
 
   <properties>
     <java.version>17</java.version>

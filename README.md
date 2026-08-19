@@ -1,6 +1,6 @@
 # ELMA 家今天的饭前端
 
-ELMA V0.1 的 uni-app 前端，优先交付微信小程序。产品只返回一家主推荐，接口实现必须以 [`contracts/openapi.yaml`](contracts/openapi.yaml) 为准。
+ELMA V0.12 的 uni-app 前端，优先交付微信小程序。产品只返回一家主推荐，接口实现必须以 [`contracts/openapi.yaml`](contracts/openapi.yaml) 为准。
 
 ## 环境
 
@@ -24,7 +24,7 @@ pnpm test:run
 pnpm build:mp-weixin
 ```
 
-当前已接通 V0.1 前端业务闭环：首页提交真实条件并展示一家服务端推荐；“换一家”只调用推荐会话的 reroll 接口并遵循服务端剩余次数；“就它了”通过 `uni.openLocation` 打开当前餐厅；三种反馈均提交到当前推荐会话，并按餐厅阻止重复提交。
+当前已接通 V0.12 前端业务闭环：首页默认正餐，可选纠偏为正餐、小吃快餐、饮品甜品或随便；服务端返回一家推荐并允许测试用户最多重新选择 5 次；“就它了”通过 `uni.openLocation` 打开当前餐厅；三种反馈均提交到当前推荐会话，并按餐厅阻止重复提交。
 
 ## 配置与边界
 

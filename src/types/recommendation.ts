@@ -1,4 +1,5 @@
 export type Radius = 500 | 1000 | 2000 | 3000
+export type CategoryFilterCode = 'MEAL' | 'FAST_FOOD' | 'DESSERT_DRINK' | 'ANY'
 export type FeedbackResult = 'LIKE' | 'NORMAL' | 'DISLIKE'
 export type RiskLevel = 'LOW' | 'MEDIUM_LOW' | 'MEDIUM' | 'HIGH'
 export type BusinessStatus = 'OPEN' | 'CLOSED' | 'UNKNOWN'
@@ -8,7 +9,7 @@ export interface CreateRecommendationRequest {
   longitude: number
   radius: Radius
   maxBudget: number | null
-  category: string
+  category: CategoryFilterCode
   dislikes: string[]
 }
 

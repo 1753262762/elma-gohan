@@ -8,10 +8,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "elma.recommendation")
 public class RecommendationProperties {
 
-    private String algorithmVersion = "lowregret-v0.1";
-    private int topK = 5;
-    /** 会话候选池大小(契约上限 A/B/C = 3)。 */
-    private int poolSize = 3;
+    private String algorithmVersion = "lowregret-v0.12";
+    private int topK = 10;
+    /** 会话候选池大小:首次推荐 + 最多 5 次重新选择。 */
+    private int poolSize = 6;
     private int walkingSpeedMetersPerMinute = 80;
     private Weights weights = new Weights();
 

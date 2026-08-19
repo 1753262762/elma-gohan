@@ -5,7 +5,7 @@
 
     <view class="brand-row">
       <text class="brand">ELMA</text>
-      <text class="edition">MEAL DECISION / 01</text>
+      <text class="edition">MEAL DECISION / 0.12</text>
     </view>
 
     <view class="hero">
@@ -86,10 +86,19 @@
     <view class="preference-grid">
       <view class="preference-field preference-field--category">
         <text class="field-label">想吃什么</text>
-        <view class="category-value">
-          <text>随便</text>
-          <text class="category-code">ANY</text>
-        </view>
+        <picker
+          class="category-picker"
+          :disabled="submitting"
+          :range="categoryOptions"
+          range-key="label"
+          :value="categoryIndex"
+          @change="handleCategoryChange"
+        >
+          <view class="category-value">
+            <text>{{ selectedCategory.label }}</text>
+            <text class="category-action">更改</text>
+          </view>
+        </picker>
       </view>
       <label class="preference-field preference-field--input">
         <text class="field-label">不想吃</text>
@@ -130,7 +139,11 @@ import { LocationService, LocationServiceError } from '@/services/location'
 import { PlatformService } from '@/services/platform'
 import { recommendationStore } from '@/stores/recommendation'
 import type { LocationCoordinates } from '@/types/location'
-import type { CreateRecommendationRequest, Radius } from '@/types/recommendation'
+import type {
+  CategoryFilterCode,
+  CreateRecommendationRequest,
+  Radius,
+} from '@/types/recommendation'
 import { DislikesValidationError, parseDislikes } from '@/utils/dislikes'
 
 const radiusOptions: Array<{ label: string; value: Radius }> = [
@@ -147,8 +160,16 @@ const budgetOptions: Array<{ label: string; value: number | null }> = [
   { label: '不限', value: null },
 ]
 
+const categoryOptions: Array<{ label: string; value: CategoryFilterCode }> = [
+  { label: '正餐', value: 'MEAL' },
+  { label: '小吃快餐', value: 'FAST_FOOD' },
+  { label: '饮品甜品', value: 'DESSERT_DRINK' },
+  { label: '随便', value: 'ANY' },
+]
+
 const radius = ref<Radius>(1000)
 const budget = ref<number | null>(null)
+const category = ref<CategoryFilterCode>('MEAL')
 const dislikesInput = ref('')
 const locationStatus = ref<'idle' | 'loading' | 'success' | 'denied' | 'error'>('idle')
 const locationAccuracy = ref<number | null>(null)
@@ -156,6 +177,14 @@ const currentLocation = ref<LocationCoordinates | null>(null)
 const submitting = ref(false)
 const requestError = ref('')
 const requestTraceId = ref('')
+
+const categoryIndex = computed(() =>
+  Math.max(
+    0,
+    categoryOptions.findIndex((option) => option.value === category.value),
+  ),
+)
+const selectedCategory = computed(() => categoryOptions[categoryIndex.value])
 
 const locationMessage = computed(() => {
   switch (locationStatus.value) {
@@ -213,6 +242,13 @@ async function handleLocationAction() {
   }
 }
 
+function handleCategoryChange(event: { detail: { value: string | number } }) {
+  const option = categoryOptions[Number(event.detail.value)]
+  if (option) {
+    category.value = option.value
+  }
+}
+
 async function submitRecommendation() {
   if (submitting.value) return
 
@@ -239,7 +275,7 @@ async function submitRecommendation() {
     longitude: currentLocation.value.longitude,
     radius: radius.value,
     maxBudget: budget.value,
-    category: 'ANY',
+    category: category.value,
     dislikes,
   }
 
@@ -494,10 +530,14 @@ onMounted(locate)
   font-weight: 600;
 }
 
-.category-code {
+.category-picker {
+  display: block;
+}
+
+.category-action {
   color: #5b61d6;
-  font-size: 17rpx;
-  letter-spacing: 1rpx;
+  font-size: 19rpx;
+  font-weight: 500;
 }
 
 .dislikes-input {

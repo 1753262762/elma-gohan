@@ -61,9 +61,9 @@ elma:
       medium-low-max-inclusive: 40
       medium-max-inclusive: 60
   recommendation:
-    algorithm-version: lowregret-v0.1
-    top-k: 5
-    pool-size: 3
+    algorithm-version: lowregret-v0.12
+    top-k: 10
+    pool-size: 6
     walking-speed-meters-per-minute: 80
     weights:
       rating: 25

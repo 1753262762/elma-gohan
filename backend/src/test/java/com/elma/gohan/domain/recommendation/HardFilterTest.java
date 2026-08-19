@@ -23,7 +23,7 @@ class HardFilterTest {
     @DisplayName("距离超过半径剔除")
     void distanceFilter() {
         var list = List.of(TestRestaurants.full("a", 4.5, 500), TestRestaurants.full("b", 4.5, 501));
-        assertThat(filter.filter(list, condition(500, null, null, List.of())))
+        assertThat(filter.filter(list, condition(500, null, "ANY", List.of())))
                 .extracting(Restaurant::sourcePoiId)
                 .containsExactly("a");
     }
@@ -34,21 +34,32 @@ class HardFilterTest {
         var expensive = TestRestaurants.full("a", 4.5, 300, 50);
         var noPrice = TestRestaurants.full("b", 4.5, 300, null);
         var cheap = TestRestaurants.full("c", 4.5, 300, 20);
-        var result = filter.filter(List.of(expensive, noPrice, cheap), condition(1000, 40, null, List.of()));
+        var result = filter.filter(List.of(expensive, noPrice, cheap), condition(1000, 40, "ANY", List.of()));
         assertThat(result).extracting(Restaurant::sourcePoiId).containsExactlyInAnyOrder("b", "c");
     }
 
     @Test
-    @DisplayName("品类:ANY/空 不限;指定 code 只留精确匹配(大小写不敏感)")
+    @DisplayName("品类:缺省正餐;四个产品大类按细品类映射")
     void categoryFilter() {
         var chinese = TestRestaurants.full("a", 4.5, 300);
         var snack = new Restaurant(null, "AMAP", "b", "快餐", 28.0, 112.0, 300,
                 "SNACK", "小吃快餐", 4.5, 100, 30,
                 BusinessStatus.UNKNOWN, "09:00-21:00", "地址", com.elma.gohan.domain.restaurant.DataCompleteness.FULL);
-        assertThat(filter.filter(List.of(chinese, snack), condition(1000, null, "ANY", List.of())))
-                .hasSize(2);
-        assertThat(filter.filter(List.of(chinese, snack), condition(1000, null, "SNACK", List.of())))
+        var dessert = new Restaurant(null, "AMAP", "c", "甜品", 28.0, 112.0, 300,
+                "DESSERT", "蛋糕甜品", 4.5, 100, 30,
+                BusinessStatus.UNKNOWN, "09:00-21:00", "地址", com.elma.gohan.domain.restaurant.DataCompleteness.FULL);
+        var restaurants = List.of(chinese, snack, dessert);
+
+        assertThat(filter.filter(restaurants, condition(1000, null, null, List.of())))
+                .extracting(Restaurant::sourcePoiId).containsExactly("a");
+        assertThat(filter.filter(restaurants, condition(1000, null, "MEAL", List.of())))
+                .extracting(Restaurant::sourcePoiId).containsExactly("a");
+        assertThat(filter.filter(restaurants, condition(1000, null, "FAST_FOOD", List.of())))
                 .extracting(Restaurant::sourcePoiId).containsExactly("b");
+        assertThat(filter.filter(restaurants, condition(1000, null, "DESSERT_DRINK", List.of())))
+                .extracting(Restaurant::sourcePoiId).containsExactly("c");
+        assertThat(filter.filter(restaurants, condition(1000, null, "ANY", List.of())))
+                .hasSize(3);
     }
 
     @Test
@@ -58,7 +69,7 @@ class HardFilterTest {
                 "CHINESE", "中餐厅", 4.5, 100, 30,
                 BusinessStatus.CLOSED, "09:00-21:00", "地址", com.elma.gohan.domain.restaurant.DataCompleteness.FULL);
         var unknown = TestRestaurants.full("b", 4.5, 300);
-        assertThat(filter.filter(List.of(closed, unknown), condition(1000, null, null, List.of())))
+        assertThat(filter.filter(List.of(closed, unknown), condition(1000, null, "ANY", List.of())))
                 .extracting(Restaurant::sourcePoiId).containsExactly("b");
     }
 
@@ -69,7 +80,7 @@ class HardFilterTest {
         var dessert = new Restaurant(null, "AMAP", "b", "甜品店", 28.0, 112.0, 300,
                 "DESSERT", "蛋糕甜品", 4.5, 100, 30,
                 BusinessStatus.UNKNOWN, "09:00-21:00", "地址", com.elma.gohan.domain.restaurant.DataCompleteness.FULL);
-        assertThat(filter.filter(List.of(beefNoodle, dessert), condition(1000, null, null, List.of("牛肉", "香菜"))))
+        assertThat(filter.filter(List.of(beefNoodle, dessert), condition(1000, null, "ANY", List.of("牛肉", "香菜"))))
                 .extracting(Restaurant::sourcePoiId).containsExactly("b");
     }
 }

@@ -31,14 +31,14 @@ class AmapResponseMapperTest {
     }
 
     @Test
-    @DisplayName("完整 POI:字段正确映射,location 为 经度,纬度 顺序")
+    @DisplayName("完整 POI:叶子 typecode 归并父品类,location 为 经度,纬度 顺序")
     void fullMapping() throws Exception {
         var poi = objectMapper.readTree("""
                 {
                   "id": "B00190.123",
                   "name": "老街牛肉粉",
                   "type": "餐饮服务;中餐厅;粉面馆",
-                  "typecode": "050100",
+                  "typecode": "050101",
                   "address": "麓山南路 123 号",
                   "location": "112.9412,28.2291",
                   "distance": "620",

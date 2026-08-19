@@ -52,6 +52,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class RecommendationService {
 
     private static final Set<Integer> ALLOWED_RADIUS = Set.of(500, 1000, 2000, 3000);
+    private static final int MAX_ALTERNATIVES = 5;
     private static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
 
     private final PoiProvider poiProvider;
@@ -103,7 +104,7 @@ public class RecommendationService {
         }
         SearchCondition condition = new SearchCondition(
                 radius, request.maxBudget(),
-                request.category() == null ? SearchCondition.CATEGORY_ANY : request.category(),
+                request.category() == null ? SearchCondition.CATEGORY_MEAL : request.category(),
                 request.dislikes() == null ? List.of() : request.dislikes());
 
         List<Restaurant> pois = poiProvider.nearby(
@@ -190,7 +191,7 @@ public class RecommendationService {
             }
         }
         if (target == null) {
-            // 候选耗尽:回到初始 A,不再产生第四家
+            // 候选耗尽:回到初始推荐,不再生成新候选
             target = candidates.get(0);
             remaining = 0;
         }
@@ -268,7 +269,7 @@ public class RecommendationService {
                 new RiskAssessment(candidate.risk().riskScore(), candidate.risk().riskLevel().name(),
                         candidate.risk().reasons(), candidate.risk().algorithmVersion()),
                 candidate.reasons(),
-                Math.min(2, Math.max(0, alternativesRemaining)));
+                Math.min(MAX_ALTERNATIVES, Math.max(0, alternativesRemaining)));
     }
 
     private String toJson(Object value) {

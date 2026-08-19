@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 仓库现状
 
-这是「ELMA 家今天的饭」的后端仓库。后端工程已落地（`backend/`，V0.1 推荐闭环已实现并通过测试）；接口事实源仍是 [contracts/openapi.yaml](contracts/openapi.yaml)。后端实施计划（分步任务、设计细节、已确认决策）见 [docs/backend-implementation-plan.md](docs/backend-implementation-plan.md)，编码前必读。
+这是「ELMA 家今天的饭」前后端仓库。V0.12 在 V0.1 闭环上增加默认正餐、四类筛选、候选多样化和最多 5 次重新选择；接口事实源仍是 [contracts/openapi.yaml](contracts/openapi.yaml)。当前增量规则见 [docs/V0.12-filtering-and-reroll.md](docs/V0.12-filtering-and-reroll.md)。
 
 两份方案文档（`elma-gohan_V0.1_Demo_技术与产品方案.md`、`elma-gohan产品介绍.md`）是项目起点，不得覆盖或重写。
 
@@ -43,13 +43,13 @@ cd backend && mvn test
 ### 不可破坏的规则
 
 1. 坐标统一 GCJ-02（前端定位、服务端 POI、导航一致）。
-2. 服务端在首次推荐时固定最多 A/B/C 三个候选并保存展示游标；reroll 只在候选池内切换，耗尽后返回初始 A，不产生第四家。
-3. `alternativesRemaining`（0～2）是前端是否显示“换一家”的唯一判断字段。
+2. 服务端最多保存 6 个不同候选；首次推荐之外允许最多 5 次 reroll，耗尽后返回初始推荐，不产生第七家。
+3. `alternativesRemaining`（0～5）是前端是否显示“换一家”的唯一判断字段。
 4. 风险分数/等级/理由、推荐理由、算法版本全部由服务端产生，前端只展示。
 5. 高德 Web Service Key 只从后端环境变量读取；Key、POI 原始结构、RiskEngine 和排序过程不得进入接口响应。
 6. `radius` 只允许 500/1000/2000/3000 米；`maxBudget` 单位为人民币元，`null` 表示不限。
 7. 业务错误统一 `ErrorResponse`（`code`/`message`/可选 `fieldErrors`/`traceId`），前端按稳定 `code` 分支处理。
-8. 品类枚举暂未确定：请求用大写代码，响应同时给代码和 `label`，不得擅自收紧或猜测品类表。
+8. 请求品类只允许 `MEAL`、`FAST_FOOD`、`DESSERT_DRINK`、`ANY`，缺省为 `MEAL`；响应继续给细品类代码和 `label`。
 
 ## 架构（目标形态）
 
@@ -60,7 +60,7 @@ cd backend && mvn test
 - `PoiProvider`（V0.1 实现 `AmapPoiProvider`）— 附近餐厅查询；第三方数据必须先转成内部 `Restaurant` 标准模型（含 `sourcePoiId`、`dataCompleteness` 等），原始结构不得进入业务核心。
 - `EvidenceProvider`（V0.1 只有 `EmptyEvidenceProvider` 占位）— 多平台评论证据的扩展点。
 - `RiskEngine` — 可配置规则模型（非 ML），输出 `riskScore`(0~100)/`riskLevel`/`reasons[]`/`algorithmVersion`；阈值必须配置化，禁止散落在代码中；高风险项（61+）不主动推荐。
-- `RecommendationEngine` — 硬过滤（距离/预算/品类/营业状态）→ 风险过滤 → LowRegretScore 排序 → Top-K（建议 5）加权随机，不做纯随机。
+- `RecommendationEngine` — 硬过滤（距离/预算/品类/营业状态）→ 风险过滤 → LowRegretScore 排序 → Top-10 多样化重排 → 最多 6 家候选池，不做纯随机。
 
 推荐流程：定位 → POI 获取 → 硬过滤 → 风险过滤 → 排序 → 主动推荐一家 → 反馈。每次推荐必须落 `recommendation_log`（请求条件快照、候选数、两种算法版本、分数），用于后续比较不同 RiskEngine 版本的踩坑率。数据库用 Flyway 建表，核心表：`restaurant`、`risk_result`、`recommendation_log`、`recommendation_candidate`、`user_feedback`、`user_preference`。
 
@@ -70,4 +70,4 @@ cd backend && mvn test
 
 ## Git 约定
 
-当前开发分支 `feat/backend`，PR 目标分支 `main`。
+当前集成分支为 `main`；新开发分支继续使用清晰、窄范围的 Conventional Commit。

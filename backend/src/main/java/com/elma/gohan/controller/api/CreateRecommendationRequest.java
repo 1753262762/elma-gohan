@@ -29,7 +29,8 @@ public record CreateRecommendationRequest(
         @Max(value = 10000, message = "必须小于等于 10000")
         Integer maxBudget,
 
-        @Pattern(regexp = "^[A-Z][A-Z0-9_]{0,31}$", message = "必须是大写品类代码")
+        @Pattern(regexp = "^(MEAL|FAST_FOOD|DESSERT_DRINK|ANY)$",
+                message = "只能是 MEAL、FAST_FOOD、DESSERT_DRINK 或 ANY")
         String category,
 
         @Size(max = 10, message = "最多 10 个")

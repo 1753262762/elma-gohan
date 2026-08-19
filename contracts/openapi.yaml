@@ -1,10 +1,10 @@
 openapi: 3.0.3
 info:
   title: ELMA 家今天的饭 API
-  version: 0.1.0
+  version: 0.12.0
   description: |
-    V0.1 Demo 的前后端接口契约。服务端负责 POI 获取、风险过滤、
-    Low Regret 排序和候选池管理；客户端不得自行重算风险或排序。
+    V0.12 测试版的前后端接口契约。服务端负责 POI 获取、品类筛选、风险过滤、
+    Low Regret 排序、多样化重排和候选池管理；客户端不得自行重算风险或排序。
 servers:
   - url: /api/v1
     description: 当前服务
@@ -34,7 +34,7 @@ paths:
               longitude: 112.9388
               radius: 1000
               maxBudget: 40
-              category: ANY
+              category: MEAL
               dislikes: [香菜]
       responses:
         '201':
@@ -65,8 +65,8 @@ paths:
       summary: 换一家
       description: |
         只在原推荐会话保存的优质候选池中切换，不重新查询或随机抽取全部 POI。
-        初次推荐为 A，最多展示两个替代项 B/C；候选耗尽后的请求返回初始 A，
-        且 `alternativesRemaining=0`，不会产生第四个选择。
+        初次推荐之外最多展示五个不同替代项；候选耗尽后的请求返回初始推荐，
+        且 `alternativesRemaining=0`，不会产生第七个选择。
       parameters:
         - $ref: '#/components/parameters/RecommendationId'
         - $ref: '#/components/parameters/AnonymousUserId'
@@ -238,7 +238,7 @@ components:
         alternativesRemaining:
           type: integer
           minimum: 0
-          maximum: 2
+          maximum: 5
           description: 还可展示的未见替代餐厅数量。
       example:
         recommendationId: 3c34f61d-cb41-4850-aafe-1505f3312f06
@@ -262,7 +262,7 @@ components:
           reasons: [评分稳定, 店铺信息完整, 价格位于正常范围]
           algorithmVersion: risk-v0.1
         reasons: [距离近, 预算合适, 基础评分稳定, 数据完整度较高]
-        alternativesRemaining: 2
+        alternativesRemaining: 5
 
     RestaurantSummary:
       type: object
@@ -334,13 +334,12 @@ components:
 
     CategoryFilterCode:
       type: string
-      default: ANY
-      pattern: '^[A-Z][A-Z0-9_]{0,31}$'
-      maxLength: 32
-      example: ANY
+      default: MEAL
+      enum: [MEAL, FAST_FOOD, DESSERT_DRINK, ANY]
+      example: MEAL
       description: |
-        V0.1 已确定的默认值只有 ANY（随便）。其他品类代码由后续确认的产品品类表定义，
-        接口把代码作为不透明值处理，前端不得自行映射为高德分类代码。
+        V0.12 面向用户的四类筛选：MEAL（正餐，默认）、FAST_FOOD（小吃快餐）、
+        DESSERT_DRINK（饮品甜品）和 ANY（随便）。细品类到大类的映射由服务端负责。
 
     RestaurantCategoryCode:
       type: string

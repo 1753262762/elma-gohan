@@ -29,7 +29,7 @@ const response = {
     algorithmVersion: 'risk-v0.1',
   },
   reasons: ['距离近'],
-  alternativesRemaining: 2,
+  alternativesRemaining: 5,
 } satisfies RecommendationResponse
 
 describe('home page acceptance states', () => {
@@ -47,7 +47,7 @@ describe('home page acceptance states', () => {
     vi.unstubAllGlobals()
   })
 
-  it('uses the V0.1 defaults and submits normalized dislikes', async () => {
+  it('uses the V0.12 defaults and submits normalized dislikes', async () => {
     vi.spyOn(LocationService, 'getCurrentLocation').mockResolvedValue({
       latitude: 28.2282,
       longitude: 112.9388,
@@ -63,6 +63,7 @@ describe('home page acceptance states', () => {
       '1km',
       '不限',
     ])
+    expect(wrapper.find('.category-value').text()).toContain('正餐')
 
     await wrapper.find('input').setValue('香菜，内脏, 香菜,肥肉')
     await wrapper.find('.decision-button').trigger('click')
@@ -73,10 +74,30 @@ describe('home page acceptance states', () => {
       longitude: 112.9388,
       radius: 1000,
       maxBudget: null,
-      category: 'ANY',
+      category: 'MEAL',
       dislikes: ['香菜', '内脏', '肥肉'],
     })
     expect(uni.navigateTo).toHaveBeenCalledWith({ url: '/pages/result/index' })
+  })
+
+  it('allows an optional four-category correction before deciding', async () => {
+    vi.spyOn(LocationService, 'getCurrentLocation').mockResolvedValue({
+      latitude: 28.2282,
+      longitude: 112.9388,
+    })
+    const createSpy = vi.spyOn(recommendationApi, 'createRecommendation').mockResolvedValue(response)
+    const wrapper = mount(HomePage)
+    await flushPromises()
+
+    wrapper.find('picker').element.dispatchEvent(
+      new CustomEvent('change', { detail: { value: 2 } }),
+    )
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.category-value').text()).toContain('饮品甜品')
+
+    await wrapper.find('.decision-button').trigger('click')
+    await flushPromises()
+    expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({ category: 'DESSERT_DRINK' }))
   })
 
   it('shows location denial and blocks recommendation without coordinates', async () => {
