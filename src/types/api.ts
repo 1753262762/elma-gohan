@@ -1,0 +1,20 @@
+export type BackendErrorCode =
+  | 'VALIDATION_FAILED'
+  | 'NO_RECOMMENDATION_AVAILABLE'
+  | 'RECOMMENDATION_NOT_FOUND'
+  | 'POI_PROVIDER_UNAVAILABLE'
+
+export interface FieldError {
+  field: string
+  message: string
+}
+
+export interface ErrorResponse {
+  code: BackendErrorCode
+  message: string
+  fieldErrors?: FieldError[]
+  traceId: string
+}
+
+export type RequestFailureKind = 'BACKEND' | 'NETWORK' | 'UNKNOWN'
+

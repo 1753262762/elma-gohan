@@ -3,5 +3,16 @@ backend/target/
 backend/hs_err_pid*.log
 backend/replay_pid*.log
 *.iml
+*.log
+pnpm-debug.log*
+
+node_modules/
+dist/
+*.local
+.env.local
+.env.*.local
+
+.DS_Store
 .idea/
 .vscode/
+coverage/
