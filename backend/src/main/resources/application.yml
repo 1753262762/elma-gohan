@@ -1,0 +1,74 @@
+spring:
+  application:
+    name: elma-gohan-backend
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:elma}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+elma:
+  amap:
+    key: ${AMAP_KEY:}
+    base-url: ${AMAP_BASE_URL:https://restapi.amap.com}
+    types: "050000"
+    page-size: 25
+    max-pages: 2
+    connect-timeout-ms: 3000
+    read-timeout-ms: 5000
+    category-map:
+      "050100": { code: CHINESE, label: 中餐厅 }
+      "050200": { code: FOREIGN, label: 外国餐厅 }
+      "050300": { code: SNACK, label: 小吃快餐 }
+      "050400": { code: DESSERT, label: 蛋糕甜品 }
+      "050500": { code: COFFEE, label: 咖啡厅 }
+      "050600": { code: TEA, label: 茶座 }
+      "050700": { code: DRINKS, label: 冷饮店 }
+      "050900": { code: FOOD_COURT, label: 美食广场 }
+  risk:
+    algorithm-version: risk-v0.1
+    rating:
+      fair-min: 4.0
+      good-min: 4.2
+      excellent-min: 4.5
+    points:
+      rating-good: 5
+      rating-fair: 15
+      rating-poor: 30
+      rating-missing: 30
+      review-count-low: 10
+      review-count-threshold: 10
+      opening-hours-missing: 10
+      price-missing: 5
+      price-anomaly: 10
+    price-anomaly-ratio: 1.5
+    levels:
+      low-max-inclusive: 20
+      medium-low-max-inclusive: 40
+      medium-max-inclusive: 60
+  recommendation:
+    algorithm-version: lowregret-v0.1
+    top-k: 5
+    pool-size: 3
+    walking-speed-meters-per-minute: 80
+    weights:
+      rating: 25
+      distance: 20
+      budget: 15
+      category: 10
+      completeness: 10
+      risk: 20

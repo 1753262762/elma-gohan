@@ -1,0 +1,97 @@
+package com.elma.gohan.provider.poi.amap;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.elma.gohan.config.AmapProperties;
+import com.elma.gohan.domain.restaurant.DataCompleteness;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+class AmapResponseMapperTest {
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final AmapProperties props = defaultProps();
+    private final AmapResponseMapper mapper = new AmapResponseMapper(props);
+
+    private static AmapProperties defaultProps() {
+        AmapProperties p = new AmapProperties();
+        p.setCategoryMap(Map.of("050100", mapping("CHINESE", "中餐厅"),
+                "050300", mapping("SNACK", "小吃快餐")));
+        return p;
+    }
+
+    private static AmapProperties.CategoryMapping mapping(String code, String label) {
+        AmapProperties.CategoryMapping m = new AmapProperties.CategoryMapping();
+        m.setCode(code);
+        m.setLabel(label);
+        return m;
+    }
+
+    @Test
+    @DisplayName("完整 POI:字段正确映射,location 为 经度,纬度 顺序")
+    void fullMapping() throws Exception {
+        var poi = objectMapper.readTree("""
+                {
+                  "id": "B00190.123",
+                  "name": "老街牛肉粉",
+                  "type": "餐饮服务;中餐厅;粉面馆",
+                  "typecode": "050100",
+                  "address": "麓山南路 123 号",
+                  "location": "112.9412,28.2291",
+                  "distance": "620",
+                  "biz_ext": {"rating": "4.5", "cost": "26", "opening_time": "09:00-21:00"}
+                }
+                """);
+        var r = mapper.toRestaurant(poi);
+        assertThat(r.source()).isEqualTo("AMAP");
+        assertThat(r.sourcePoiId()).isEqualTo("B00190.123");
+        assertThat(r.latitude()).isEqualTo(28.2291);
+        assertThat(r.longitude()).isEqualTo(112.9412);
+        assertThat(r.distanceMeters()).isEqualTo(620);
+        assertThat(r.categoryCode()).isEqualTo("CHINESE");
+        assertThat(r.categoryLabel()).isEqualTo("中餐厅");
+        assertThat(r.rating()).isEqualTo(4.5);
+        assertThat(r.averagePrice()).isEqualTo(26);
+        assertThat(r.openingHours()).isEqualTo("09:00-21:00");
+        assertThat(r.dataCompleteness()).isEqualTo(DataCompleteness.FULL);
+    }
+
+    @Test
+    @DisplayName("biz_ext 缺失:rating/price/hours 为 null,完整度降级")
+    void missingBizExt() throws Exception {
+        var poi = objectMapper.readTree("""
+                {
+                  "id": "B2",
+                  "name": "无名小店",
+                  "type": "餐饮服务;小吃快餐店;米粉店",
+                  "typecode": "050999",
+                  "address": "",
+                  "location": "112.9,28.2",
+                  "distance": "100",
+                  "pname": "湖南省", "cityname": "长沙市", "adname": "岳麓区"
+                }
+                """);
+        var r = mapper.toRestaurant(poi);
+        assertThat(r.rating()).isNull();
+        assertThat(r.averagePrice()).isNull();
+        assertThat(r.openingHours()).isNull();
+        assertThat(r.address()).isEqualTo("湖南省长沙市岳麓区");
+        assertThat(r.categoryCode()).isEqualTo("OTHER");
+        assertThat(r.categoryLabel()).isEqualTo("餐饮服务");
+        // rating/price/hours 三项缺失 -> MINIMAL(<=2 项缺失才是 PARTIAL)
+        assertThat(r.dataCompleteness()).isEqualTo(DataCompleteness.MINIMAL);
+    }
+
+    @Test
+    @DisplayName("缺少 id 或 name 的脏数据被跳过")
+    void skipsInvalidEntries() throws Exception {
+        var pois = List.of(
+                objectMapper.readTree("{\"id\":\"\",\"name\":\"x\",\"location\":\"1,1\"}"),
+                objectMapper.readTree("{\"id\":\"y\",\"name\":\"\",\"location\":\"1,1\"}"),
+                objectMapper.readTree("{\"id\":\"z\",\"name\":\"ok\",\"location\":\"1,1\",\"distance\":\"5\"}"));
+        assertThat(mapper.toRestaurants(pois)).hasSize(1);
+    }
+}
