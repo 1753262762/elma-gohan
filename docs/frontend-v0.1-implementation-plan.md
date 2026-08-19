@@ -2,10 +2,10 @@
 
 ## 执行状态
 
-- 当前阶段：视觉审批门（等待用户确认）
-- 已完成项：计划落盘；官方 uni-app Vue 3 TypeScript 工程基线；首页与结果页清透 ACG 视觉骨架；H5 与微信小程序构建；视觉截图
-- 最后验证：`pnpm typecheck`、`pnpm build:h5`、`pnpm build:mp-weixin` 均通过；源码禁用模式扫描通过；`contracts/` 相对 HEAD 无改动
-- 阻塞项：用户需确认视觉截图后才能继续完整 API 联调；本机未安装微信开发者工具，真机验收待工具与 AppID 就绪；当前验证机为 Node 24.19.0，需在 Node 22 LTS 环境复验
+- 当前阶段：V0.1 前端自动化与微信开发者工具验收完成，等待真实后端与真机验收
+- 已完成项：工程与视觉基线；定位与匿名身份；统一错误；创建推荐；reroll 与剩余次数；GCJ-02 地图导航；三种反馈与重复提交保护；所有操作 Loading/Error；API、Service、输入、状态及关键页面组件测试；真机验收清单
+- 最后验证：Node 22.23.2 下 `pnpm typecheck`、`pnpm test:run` 和 `pnpm build:mp-weixin` 通过（10 个测试文件、32 项测试）；微信开发者工具重新编译后首页正常且项目错误数为 0；生成的微信 WXSS 与 `requiredPrivateInfos` 检查通过；源码边界与契约无改动检查通过
+- 阻塞项：本机 `127.0.0.1:8080` 尚无可访问后端；真实接口、地图跳转与反馈落库仍需使用有效微信 AppID、契约兼容后端和真机完成验收
 - 视觉截图：`elma-home-visual-gate-wide.png`、`elma-result-visual-gate-wide.png`（当前 Codex 任务可视化目录）
 
 > 后续 Agent 开始工作前必须先阅读本文件、根目录 `AGENTS.md`、`docs/V0.1-development-tasks.md` 和 `contracts/openapi.yaml`。每完成一个阶段，立即更新本节的阶段、验证命令与阻塞项。

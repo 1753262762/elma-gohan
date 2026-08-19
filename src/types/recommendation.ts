@@ -3,6 +3,27 @@ export type FeedbackResult = 'LIKE' | 'NORMAL' | 'DISLIKE'
 export type RiskLevel = 'LOW' | 'MEDIUM_LOW' | 'MEDIUM' | 'HIGH'
 export type BusinessStatus = 'OPEN' | 'CLOSED' | 'UNKNOWN'
 
+export interface CreateRecommendationRequest {
+  latitude: number
+  longitude: number
+  radius: Radius
+  maxBudget: number | null
+  category: string
+  dislikes: string[]
+}
+
+export interface SubmitFeedbackRequest {
+  result: FeedbackResult
+}
+
+export interface FeedbackResponse {
+  feedbackId: string
+  recommendationId: string
+  restaurantId: string
+  result: FeedbackResult
+  recordedAt: string
+}
+
 export interface RecommendationResponse {
   recommendationId: string
   restaurant: RestaurantSummary

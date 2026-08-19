@@ -16,13 +16,27 @@
 
     <view class="location-row">
       <view class="location-copy">
-        <view class="location-mark" aria-hidden="true" />
+        <view
+          class="location-mark"
+          :class="{ 'location-mark--loading': locationStatus === 'loading' }"
+          aria-hidden="true"
+        />
         <view>
           <text class="location-label">当前定位</text>
-          <text class="location-value">已获取当前位置</text>
+          <text class="location-value">{{ locationMessage }}</text>
+          <text v-if="locationAccuracy" class="location-accuracy">
+            精度约 {{ locationAccuracy }} 米
+          </text>
         </view>
       </view>
-      <button class="text-action" @click="showVisualGateMessage">重新定位</button>
+      <button
+        class="text-action"
+        :class="{ 'text-action--disabled': locationStatus === 'loading' }"
+        :disabled="locationStatus === 'loading'"
+        @click="handleLocationAction"
+      >
+        {{ locationActionLabel }}
+      </button>
     </view>
 
     <view class="choice-section">
@@ -35,7 +49,11 @@
           v-for="option in radiusOptions"
           :key="option.value"
           class="choice-button"
-          :class="{ 'choice-button--active': radius === option.value }"
+          :class="{
+            'choice-button--active': radius === option.value,
+            'choice-button--disabled': submitting,
+          }"
+          :disabled="submitting"
           @click="radius = option.value"
         >
           {{ option.label }}
@@ -53,7 +71,11 @@
           v-for="option in budgetOptions"
           :key="String(option.value)"
           class="choice-button"
-          :class="{ 'choice-button--active': budget === option.value }"
+          :class="{
+            'choice-button--active': budget === option.value,
+            'choice-button--disabled': submitting,
+          }"
+          :disabled="submitting"
           @click="budget = option.value"
         >
           {{ option.label }}
@@ -74,6 +96,7 @@
         <input
           v-model="dislikesInput"
           class="dislikes-input"
+          :disabled="submitting"
           maxlength="309"
           placeholder="香菜、内脏……"
           placeholder-class="dislikes-placeholder"
@@ -82,19 +105,33 @@
     </view>
 
     <view class="decision-area">
-      <button class="decision-button" @click="showVisualGateMessage">
-        <text>帮我选</text>
-        <text class="decision-arrow">→</text>
+      <button
+        class="decision-button"
+        :class="{ 'decision-button--disabled': submitting }"
+        :disabled="submitting"
+        @click="submitRecommendation"
+      >
+        <text>{{ submitting ? '正在决定…' : '帮我选' }}</text>
+        <text class="decision-arrow">{{ submitting ? '···' : '→' }}</text>
       </button>
+      <text v-if="requestError" class="request-error">{{ requestError }}</text>
+      <text v-if="requestTraceId" class="request-trace">TRACE · {{ requestTraceId }}</text>
       <text class="decision-caption">ONE GOOD CHOICE, NOT A LIST.</text>
     </view>
   </view>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
-import type { Radius } from '@/types/recommendation'
+import { createRecommendation } from '@/api/recommendation'
+import { ApiError, getUserFacingError } from '@/api/errors'
+import { LocationService, LocationServiceError } from '@/services/location'
+import { PlatformService } from '@/services/platform'
+import { recommendationStore } from '@/stores/recommendation'
+import type { LocationCoordinates } from '@/types/location'
+import type { CreateRecommendationRequest, Radius } from '@/types/recommendation'
+import { DislikesValidationError, parseDislikes } from '@/utils/dislikes'
 
 const radiusOptions: Array<{ label: string; value: Radius }> = [
   { label: '500m', value: 500 },
@@ -113,13 +150,115 @@ const budgetOptions: Array<{ label: string; value: number | null }> = [
 const radius = ref<Radius>(1000)
 const budget = ref<number | null>(null)
 const dislikesInput = ref('')
+const locationStatus = ref<'idle' | 'loading' | 'success' | 'denied' | 'error'>('idle')
+const locationAccuracy = ref<number | null>(null)
+const currentLocation = ref<LocationCoordinates | null>(null)
+const submitting = ref(false)
+const requestError = ref('')
+const requestTraceId = ref('')
 
-function showVisualGateMessage() {
-  uni.showToast({
-    title: '视觉确认后接入完整功能',
-    icon: 'none',
-  })
+const locationMessage = computed(() => {
+  switch (locationStatus.value) {
+    case 'loading':
+      return '正在获取当前位置…'
+    case 'success':
+      return '已获取当前位置'
+    case 'denied':
+      return '定位权限未开启'
+    case 'error':
+      return '暂时无法获取位置'
+    default:
+      return '等待获取位置'
+  }
+})
+
+const locationActionLabel = computed(() => {
+  if (locationStatus.value === 'loading') return '定位中'
+  if (locationStatus.value === 'denied') return '去开启'
+  return '重新定位'
+})
+
+async function locate() {
+  locationStatus.value = 'loading'
+  locationAccuracy.value = null
+  currentLocation.value = null
+  requestError.value = ''
+  requestTraceId.value = ''
+
+  try {
+    const location = await LocationService.getCurrentLocation()
+    currentLocation.value = location
+    locationAccuracy.value = location.accuracy ? Math.round(location.accuracy) : null
+    locationStatus.value = 'success'
+  } catch (error) {
+    locationStatus.value =
+      error instanceof LocationServiceError && error.code === 'PERMISSION_DENIED' ? 'denied' : 'error'
+  }
 }
+
+async function handleLocationAction() {
+  if (locationStatus.value !== 'denied') {
+    await locate()
+    return
+  }
+
+  try {
+    await PlatformService.openLocationSettings()
+    await locate()
+  } catch {
+    uni.showToast({
+      title: '请在系统设置中开启定位权限',
+      icon: 'none',
+    })
+  }
+}
+
+async function submitRecommendation() {
+  if (submitting.value) return
+
+  requestError.value = ''
+  requestTraceId.value = ''
+
+  if (!currentLocation.value) {
+    requestError.value =
+      locationStatus.value === 'denied' ? '请先开启定位权限，再帮你做决定' : '请先获取当前位置'
+    return
+  }
+
+  let dislikes: string[]
+  try {
+    dislikes = parseDislikes(dislikesInput.value)
+  } catch (error) {
+    requestError.value =
+      error instanceof DislikesValidationError ? error.message : '不想吃的内容格式不正确'
+    return
+  }
+
+  const request: CreateRecommendationRequest = {
+    latitude: currentLocation.value.latitude,
+    longitude: currentLocation.value.longitude,
+    radius: radius.value,
+    maxBudget: budget.value,
+    category: 'ANY',
+    dislikes,
+  }
+
+  submitting.value = true
+  try {
+    const response = await createRecommendation(request)
+    recommendationStore.setCurrent(response, request)
+    uni.navigateTo({ url: '/pages/result/index' })
+  } catch (error) {
+    requestError.value = getUserFacingError(error)
+    if (error instanceof ApiError) {
+      requestTraceId.value = error.response?.traceId ?? ''
+    }
+  } finally {
+    submitting.value = false
+  }
+}
+
+onMounted(locate)
 </script>
 
 <style scoped>
@@ -134,10 +273,6 @@ function showVisualGateMessage() {
   padding: calc(var(--status-bar-height) + 40rpx) 48rpx 48rpx;
   background: #f8f8fb;
   color: #18203a;
-}
-
-.home-page * {
-  box-sizing: border-box;
 }
 
 .pixel-spark {
@@ -236,7 +371,8 @@ function showVisualGateMessage() {
 }
 
 .location-label,
-.location-value {
+.location-value,
+.location-accuracy {
   display: block;
 }
 
@@ -251,6 +387,16 @@ function showVisualGateMessage() {
   font-weight: 600;
 }
 
+.location-accuracy {
+  margin-top: 4rpx;
+  color: #747d97;
+  font-size: 18rpx;
+}
+
+.location-mark--loading {
+  animation: location-pulse 1s steps(2, end) infinite;
+}
+
 .text-action {
   margin: 0;
   padding: 8rpx 0 8rpx 20rpx;
@@ -258,6 +404,17 @@ function showVisualGateMessage() {
   color: #5b61d6;
   font-size: 22rpx;
   line-height: 1;
+}
+
+.text-action--disabled {
+  color: #9ca3b7;
+  opacity: 1;
+}
+
+@keyframes location-pulse {
+  50% {
+    opacity: 0.35;
+  }
 }
 
 .choice-section {
@@ -304,6 +461,10 @@ function showVisualGateMessage() {
   background: #e8e9ff;
   color: #343a9f;
   font-weight: 600;
+}
+
+.choice-button--disabled {
+  opacity: 0.7;
 }
 
 .preference-grid {
@@ -370,6 +531,11 @@ function showVisualGateMessage() {
   text-align: left;
 }
 
+.decision-button--disabled {
+  background: #7479c9;
+  opacity: 1;
+}
+
 .decision-arrow {
   font-size: 40rpx;
   font-weight: 400;
@@ -382,5 +548,23 @@ function showVisualGateMessage() {
   font-size: 17rpx;
   letter-spacing: 2rpx;
   text-align: center;
+}
+
+.request-error,
+.request-trace {
+  display: block;
+  margin-top: 14rpx;
+  text-align: center;
+}
+
+.request-error {
+  color: #a6455a;
+  font-size: 21rpx;
+}
+
+.request-trace {
+  color: #8a92a8;
+  font-size: 15rpx;
+  letter-spacing: 1rpx;
 }
 </style>

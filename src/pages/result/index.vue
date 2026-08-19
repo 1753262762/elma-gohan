@@ -34,16 +34,18 @@
       </view>
     </view>
 
-    <view class="risk-strip">
+    <view class="risk-strip" :class="`risk-strip--${recommendation.risk.riskLevel.toLowerCase()}`">
       <view>
         <text class="risk-caption">RISK CHECK</text>
         <text class="risk-label">{{ riskLabel }}</text>
       </view>
       <view class="risk-signal" aria-hidden="true">
-        <view class="risk-dot risk-dot--active" />
-        <view class="risk-dot risk-dot--active" />
-        <view class="risk-dot" />
-        <view class="risk-dot" />
+        <view
+          v-for="level in 4"
+          :key="level"
+          class="risk-dot"
+          :class="{ 'risk-dot--active': level <= riskSignalLevel }"
+        />
       </view>
     </view>
 
@@ -59,31 +61,47 @@
     </view>
 
     <view class="result-actions">
-      <button class="accept-button" @click="showVisualGateMessage">
-        <text>就它了</text>
+      <button
+        class="accept-button"
+        :class="{ 'accept-button--disabled': operationBusy }"
+        :disabled="operationBusy"
+        @click="openNavigation"
+      >
+        <text>{{ navigating ? '正在打开地图…' : '就它了' }}</text>
         <text class="accept-arrow">↗</text>
       </button>
       <button
         v-if="recommendation.alternativesRemaining > 0"
         class="reroll-button"
-        @click="showVisualGateMessage"
+        :class="{ 'reroll-button--disabled': operationBusy }"
+        :disabled="operationBusy"
+        @click="reroll"
       >
-        换一家 · 还可以换 {{ recommendation.alternativesRemaining }} 次
+        {{ rerolling ? '正在换一家…' : `换一家 · 还可以换 ${recommendation.alternativesRemaining} 次` }}
       </button>
+      <text v-else class="alternatives-exhausted">备选已用完，今天就从这家出发吧。</text>
+      <text v-if="operationError" class="operation-error">{{ operationError }}</text>
+      <text v-if="operationTraceId" class="operation-trace">TRACE · {{ operationTraceId }}</text>
     </view>
 
     <view class="feedback-section">
-      <text class="feedback-title">这个答案怎么样？</text>
+      <text class="feedback-title">
+        {{ selectedFeedback ? '这家反馈已记录' : '这个答案怎么样？' }}
+      </text>
       <view class="feedback-row">
         <button
           v-for="option in feedbackOptions"
           :key="option.value"
           class="feedback-button"
-          :class="{ 'feedback-button--active': feedback === option.value }"
-          @click="feedback = option.value"
+          :class="{
+            'feedback-button--active': selectedFeedback === option.value,
+            'feedback-button--disabled': operationBusy || selectedFeedback !== null,
+          }"
+          :disabled="operationBusy || selectedFeedback !== null"
+          @click="submitFeedback(option.value)"
         >
           <text class="feedback-icon">{{ option.icon }}</text>
-          <text>{{ option.label }}</text>
+          <text>{{ submittingFeedback && pendingFeedback === option.value ? '提交中' : option.label }}</text>
         </button>
       </view>
     </view>
@@ -94,8 +112,11 @@
 import { onLoad } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 
-import { visualPreviewRecommendation } from '@/dev/visual-preview'
-import type { FeedbackResult, RecommendationResponse, RiskLevel } from '@/types/recommendation'
+import { rerollRecommendation, submitRecommendationFeedback } from '@/api/recommendation'
+import { ApiError, getUserFacingError } from '@/api/errors'
+import { NavigationService, NavigationServiceError } from '@/services/navigation'
+import { recommendationStore } from '@/stores/recommendation'
+import type { FeedbackResult, RiskLevel } from '@/types/recommendation'
 
 const riskLabels: Record<RiskLevel, string> = {
   LOW: '低风险',
@@ -104,26 +125,40 @@ const riskLabels: Record<RiskLevel, string> = {
   HIGH: '高风险',
 }
 
+const riskSignalLevels: Record<RiskLevel, number> = {
+  LOW: 1,
+  MEDIUM_LOW: 2,
+  MEDIUM: 3,
+  HIGH: 4,
+}
+
 const feedbackOptions: Array<{ icon: string; label: string; value: FeedbackResult }> = [
   { icon: '↑', label: '不错', value: 'LIKE' },
   { icon: '—', label: '一般', value: 'NORMAL' },
   { icon: '↓', label: '踩坑', value: 'DISLIKE' },
 ]
 
-const recommendation = ref<RecommendationResponse | null>(null)
-const feedback = ref<FeedbackResult | null>(null)
+const recommendation = computed(() => recommendationStore.state.current)
+const rerolling = ref(false)
+const navigating = ref(false)
+const submittingFeedback = ref(false)
+const pendingFeedback = ref<FeedbackResult | null>(null)
+const operationError = ref('')
+const operationTraceId = ref('')
 
 const riskLabel = computed(() =>
   recommendation.value ? riskLabels[recommendation.value.risk.riskLevel] : '',
 )
+const riskSignalLevel = computed(() =>
+  recommendation.value ? riskSignalLevels[recommendation.value.risk.riskLevel] : 0,
+)
+const selectedFeedback = computed(() => recommendationStore.getCurrentFeedback())
+const operationBusy = computed(
+  () => rerolling.value || navigating.value || submittingFeedback.value,
+)
 
-onLoad((options) => {
-  if (import.meta.env.DEV && options?.preview === '1') {
-    recommendation.value = visualPreviewRecommendation
-    return
-  }
-
-  goHome()
+onLoad(() => {
+  if (!recommendation.value) goHome()
 })
 
 function formatDistance(distanceMeters: number) {
@@ -135,14 +170,78 @@ function formatPrice(averagePrice: number | null) {
 }
 
 function goHome() {
+  recommendationStore.clear()
   uni.reLaunch({ url: '/pages/home/index' })
 }
 
-function showVisualGateMessage() {
-  uni.showToast({
-    title: '视觉确认后接入完整功能',
-    icon: 'none',
-  })
+function resetOperationError() {
+  operationError.value = ''
+  operationTraceId.value = ''
+}
+
+function handleOperationError(error: unknown) {
+  if (
+    error instanceof ApiError &&
+    error.response?.code === 'RECOMMENDATION_NOT_FOUND'
+  ) {
+    recommendationStore.clear()
+    uni.showToast({ title: error.response.message, icon: 'none' })
+    uni.reLaunch({ url: '/pages/home/index' })
+    return
+  }
+
+  operationError.value =
+    error instanceof NavigationServiceError ? error.message : getUserFacingError(error)
+  operationTraceId.value = error instanceof ApiError ? error.response?.traceId ?? '' : ''
+}
+
+async function reroll() {
+  const current = recommendation.value
+  if (!current || current.alternativesRemaining <= 0 || operationBusy.value) return
+
+  resetOperationError()
+  rerolling.value = true
+  try {
+    const response = await rerollRecommendation(current.recommendationId)
+    recommendationStore.replaceCurrent(response)
+  } catch (error) {
+    handleOperationError(error)
+  } finally {
+    rerolling.value = false
+  }
+}
+
+async function openNavigation() {
+  const current = recommendation.value
+  if (!current || operationBusy.value) return
+
+  resetOperationError()
+  navigating.value = true
+  try {
+    await NavigationService.openRestaurant(current.restaurant)
+  } catch (error) {
+    handleOperationError(error)
+  } finally {
+    navigating.value = false
+  }
+}
+
+async function submitFeedback(result: FeedbackResult) {
+  const current = recommendation.value
+  if (!current || operationBusy.value || selectedFeedback.value) return
+
+  resetOperationError()
+  submittingFeedback.value = true
+  pendingFeedback.value = result
+  try {
+    const response = await submitRecommendationFeedback(current.recommendationId, result)
+    recommendationStore.recordFeedback(response)
+  } catch (error) {
+    handleOperationError(error)
+  } finally {
+    submittingFeedback.value = false
+    pendingFeedback.value = null
+  }
 }
 </script>
 
@@ -156,10 +255,6 @@ function showVisualGateMessage() {
   padding: calc(var(--status-bar-height) + 34rpx) 48rpx 54rpx;
   background: #f8f8fb;
   color: #18203a;
-}
-
-.result-page * {
-  box-sizing: border-box;
 }
 
 .result-nav,
@@ -330,6 +425,11 @@ function showVisualGateMessage() {
   background: #2f7d6a;
 }
 
+.risk-strip--medium .risk-dot--active,
+.risk-strip--high .risk-dot--active {
+  background: #a86145;
+}
+
 .reason-section {
   margin-top: 42rpx;
 }
@@ -401,6 +501,39 @@ function showVisualGateMessage() {
   line-height: 1;
 }
 
+.reroll-button--disabled {
+  opacity: 0.65;
+}
+
+.accept-button--disabled {
+  background: #7479c9;
+  opacity: 1;
+}
+
+.alternatives-exhausted,
+.operation-error,
+.operation-trace {
+  display: block;
+  margin-top: 16rpx;
+  text-align: center;
+}
+
+.alternatives-exhausted {
+  color: #747d97;
+  font-size: 19rpx;
+}
+
+.operation-error {
+  color: #a6455a;
+  font-size: 21rpx;
+}
+
+.operation-trace {
+  color: #8a92a8;
+  font-size: 15rpx;
+  letter-spacing: 1rpx;
+}
+
 .feedback-section {
   margin-top: 38rpx;
 }
@@ -434,6 +567,14 @@ function showVisualGateMessage() {
   background: #e8e9ff;
   color: #343a9f;
   font-weight: 600;
+}
+
+.feedback-button--disabled {
+  opacity: 0.62;
+}
+
+.feedback-button--active.feedback-button--disabled {
+  opacity: 1;
 }
 
 .feedback-icon {

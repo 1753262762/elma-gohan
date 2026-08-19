@@ -2,20 +2,21 @@
 
 ## Project Structure & Module Organization
 
-This repository is currently contract- and documentation-first. `contracts/openapi.yaml` is the authoritative V0.1 API definition; `contracts/README.md` explains the agreed cross-client rules, and `contracts/validate_openapi.py` checks the contract. Planning and acceptance criteria live in `docs/`. The root Chinese-language Markdown files contain the product introduction and technical proposal.
-
-The planned client stack is uni-app, Vue 3, and TypeScript. When application code is added, keep runtime code under `src/`, static files under `static/`, and tests beside features or in a top-level `tests/` directory. Do not duplicate API DTO definitions independently of the OpenAPI contract.
+This uni-app Vue 3 TypeScript client lives in `src/`. Pages are under `src/pages/`, platform capabilities under `src/services/`, shared request code under `src/api/`, and contract-aligned types under `src/types/`. Vitest tests live in `tests/`. `contracts/openapi.yaml` remains the authoritative V0.1 API definition; planning and acceptance criteria live in `docs/`.
 
 ## Build, Test, and Development Commands
 
-There is no frontend package manifest or build script yet. The current executable check is:
+Use Node 22 LTS and pnpm 11:
 
 ```powershell
-py -m pip install PyYAML
-py contracts/validate_openapi.py
+pnpm dev:h5
+pnpm dev:mp-weixin
+pnpm typecheck
+pnpm test:run
+pnpm build:mp-weixin
 ```
 
-The validator must print `CONTRACT_OK`. Once the frontend scaffold lands, expose standard scripts such as `npm run dev`, `npm run build`, `npm run lint`, and `npm test` through `package.json`, then document platform-specific uni-app commands in the README.
+Import `dist/dev/mp-weixin` into WeChat DevTools for development. Validate the contract with `py contracts/validate_openapi.py`; it must print `CONTRACT_OK`.
 
 ## Coding Style & Naming Conventions
 

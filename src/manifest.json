@@ -33,7 +33,7 @@
         "desc": "用于获取当前位置并推荐附近餐厅"
       }
     },
-    "requiredPrivateInfos": ["getLocation", "openLocation"]
+    "requiredPrivateInfos": ["getLocation"]
   },
   "uniStatistics": {
     "enable": false
