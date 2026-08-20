@@ -40,6 +40,7 @@ class AmapResponseMapperTest {
                   "type": "餐饮服务;中餐厅;粉面馆",
                   "typecode": "050101",
                   "address": "麓山南路 123 号",
+                  "tel": "0731-12345678",
                   "location": "112.9412,28.2291",
                   "distance": "620",
                   "biz_ext": {"rating": "4.5", "cost": "26", "opening_time": "09:00-21:00"}
@@ -56,6 +57,7 @@ class AmapResponseMapperTest {
         assertThat(r.rating()).isEqualTo(4.5);
         assertThat(r.averagePrice()).isEqualTo(26);
         assertThat(r.openingHours()).isEqualTo("09:00-21:00");
+        assertThat(r.telephone()).isEqualTo("0731-12345678");
         assertThat(r.dataCompleteness()).isEqualTo(DataCompleteness.FULL);
     }
 

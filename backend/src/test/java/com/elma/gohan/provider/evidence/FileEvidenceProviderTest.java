@@ -4,8 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.elma.gohan.TestRestaurants;
 import com.elma.gohan.config.EvidenceProperties;
-import com.elma.gohan.config.RiskProperties;
-import com.elma.gohan.domain.risk.RuleBasedRiskEngine;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.DefaultResourceLoader;
@@ -26,11 +24,7 @@ class FileEvidenceProviderTest {
         assertThat(evidence.reviews()).hasSize(1);
         assertThat(evidence.reviews().get(0).externalReviewId()).isEqualTo("R-1");
 
-        var engine = new RuleBasedRiskEngine(new RiskProperties());
-        assertThat(engine.evaluate(restaurant, evidence).riskScore())
-                .isNotEqualTo(engine.evaluate(restaurant, RestaurantEvidence.empty()).riskScore());
-        assertThat(engine.evaluate(restaurant, evidence).confidence())
-                .isGreaterThan(engine.evaluate(restaurant, RestaurantEvidence.empty()).confidence());
+        assertThat(evidence.status()).isEqualTo(EvidenceStatus.AVAILABLE);
     }
 
     @Test

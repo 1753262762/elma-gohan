@@ -41,7 +41,7 @@ function recommendation(overrides: Partial<RecommendationResponse> = {}): Recomm
       riskLevel: 'MEDIUM_LOW',
       confidence: 0.4,
       reasons: ['信息有限'],
-      algorithmVersion: 'risk-v0.2',
+      algorithmVersion: 'risk-v0.3',
     },
     reasons: ['距离可接受'],
     alternativesRemaining: 0,
@@ -81,6 +81,33 @@ describe('result page acceptance states', () => {
     expect(wrapper.text()).toContain('距离可接受')
     expect(wrapper.find('.reroll-button').exists()).toBe(false)
     expect(wrapper.text()).toContain('备选已用完')
+  })
+
+  it('renders matched platform ratings and the consistency explanation', () => {
+    recommendationStore.setCurrent(recommendation({
+      evidenceSummary: {
+        matchStatus: 'MATCHED',
+        matchConfidence: 0.91,
+        consistency: 'CONFLICT',
+        ratingDifference: 0.7,
+        reason: '高德评分比百度高 0.7 分',
+        amap: {
+          status: 'AVAILABLE', rating: 4.9, tasteRating: null, serviceRating: null,
+          environmentRating: null, averagePrice: 58, commentCount: null,
+        },
+        baidu: {
+          status: 'AVAILABLE', rating: 4.2, tasteRating: 4.0, serviceRating: 4.1,
+          environmentRating: null, averagePrice: 62, commentCount: 2600,
+        },
+      },
+    }), request)
+
+    const wrapper = mount(ResultPage)
+
+    expect(wrapper.find('.evidence-section').exists()).toBe(true)
+    expect(wrapper.text()).toContain('已匹配同一门店')
+    expect(wrapper.text()).toContain('口味 4.0 · 服务 4.1')
+    expect(wrapper.text()).toContain('高德评分比百度高 0.7 分')
   })
 
   it('shows reroll loading and replaces the view only with the server response', async () => {

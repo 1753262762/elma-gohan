@@ -39,12 +39,34 @@ elma:
       "050600": { code: TEA, label: 茶座 }
       "050700": { code: DRINKS, label: 冷饮店 }
       "050900": { code: FOOD_COURT, label: 美食广场 }
+  baidu:
+    enabled: ${BAIDU_ENABLED:true}
+    ak: ${BAIDU_MAP_AK:}
+    base-url: ${BAIDU_BASE_URL:https://api.map.baidu.com}
+    query: 餐饮
+    page-size: 20
+    connect-timeout-ms: 1500
+    read-timeout-ms: 2500
+  entity-resolution:
+    name-weight: 0.45
+    coordinate-weight: 0.30
+    address-weight: 0.15
+    telephone-weight: 0.10
+    accept-threshold: 0.78
+    ambiguity-margin: 0.08
+    minimum-name-similarity: 0.45
+    maximum-distance-meters: 300
+    matched-ttl-days: 30
+    ambiguous-ttl-hours: 6
+    no-match-ttl-minutes: 30
+    evidence-ttl-hours: 6
+    v2-evidence-ttl-hours: 24
   evidence:
     provider: ${EVIDENCE_PROVIDER:file}
     location: ${EVIDENCE_FILE:classpath:evidence/restaurant-evidence.json}
     max-reviews-per-restaurant: 200
   risk:
-    algorithm-version: risk-v0.2
+    algorithm-version: risk-v0.3
     rating:
       fair-min: 4.0
       good-min: 4.2
@@ -90,23 +112,41 @@ elma:
       opening-hours-missing: 10
       price-missing: 5
       price-anomaly: 20
+      baidu-unavailable: 30
+      baidu-no-match: 25
+      baidu-rating-missing: 15
+      amap-rating-missing: 20
+      both-comment-count-missing: 10
+      both-price-missing: 5
+      both-opening-hours-missing: 5
     confidence:
       poi-weight: 0.25
       evidence-weight: 0.75
       target-reviews: 30
+      amap-weight: 0.35
+      baidu-weight: 0.35
+      match-weight: 0.30
+      single-source-weight: 0.50
+      single-source-cap: 0.50
     weights:
-      rating: 0.25
-      template: 0.20
-      burst: 0.15
-      trend: 0.15
+      rating: 0.20
+      template: 0.15
+      burst: 0.10
+      trend: 0.10
       data-insufficient: 0.25
+      cross-platform-conflict: 0.20
+    cross-platform:
+      consistent-max-difference: 0.2
+      conflict-start-difference: 0.7
+      full-risk-difference: 1.0
+      conflict-start-risk: 60
     price-anomaly-ratio: 1.5
     levels:
       low-max-inclusive: 20
       medium-low-max-inclusive: 40
       medium-max-inclusive: 60
   recommendation:
-    algorithm-version: recommendation-v0.2
+    algorithm-version: recommendation-v0.3
     top-k: 10
     pool-size: 6
     walking-speed-meters-per-minute: 80

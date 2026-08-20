@@ -39,6 +39,7 @@ public class AmapResponseMapper {
         String openingHours = blankToNull(truncate(bizExt.path("opening_time").asText(""), 255));
 
         String address = buildAddress(poi);
+        String telephone = blankToNull(truncate(poi.path("tel").asText(""), 128));
         Category category = resolveCategory(poi);
 
         DataCompleteness completeness = completeness(rating, averagePrice, openingHours, address);
@@ -47,7 +48,7 @@ public class AmapResponseMapper {
                 null, SOURCE, poiId, name, latitude, longitude, distance,
                 category.code(), category.label(),
                 rating, null, averagePrice,
-                BusinessStatus.UNKNOWN, openingHours, address, completeness);
+                BusinessStatus.UNKNOWN, openingHours, address, telephone, completeness);
     }
 
     public List<Restaurant> toRestaurants(List<JsonNode> pois) {

@@ -1,6 +1,6 @@
-# ELMA 家今天的饭 V0.2
+# ELMA 家今天的饭 V0.3
 
-LowRegret V0.2 是 Java 模块化单体后端与 uni-app 微信小程序前端。V0.2 在已验收的 V0.12 筛选与 5 次 reroll 上加入外部 Evidence 去水、`risk-v0.2` 和用户反馈画像闭环。产品仍只返回一家主推荐，接口事实源是 [`contracts/openapi.yaml`](contracts/openapi.yaml)，数据流与规则见 [`docs/V0.2-evidence-risk-and-taste.md`](docs/V0.2-evidence-risk-and-taste.md)。
+LowRegret V0.3 是 Java 模块化单体后端与 uni-app 微信小程序前端。它保留 V0.2 的 File Evidence、TasteProfile、品类筛选和 5 次 reroll，并以高德为主 POI、百度为第二 Evidence 来源，引入实体匹配和跨平台评分一致性风险。产品仍只返回一家主推荐，接口事实源是 [`contracts/openapi.yaml`](contracts/openapi.yaml)，V0.3 数据流与规则见 [`docs/V0.3-amap-baidu-consistency.md`](docs/V0.3-amap-baidu-consistency.md)。
 
 ## 环境
 
@@ -30,6 +30,6 @@ pnpm build:mp-weixin
 
 `VITE_API_BASE_URL` 应包含 `/api/v1`。真实环境配置写入 `.env.local`，不要提交高德 Key 或其他敏感信息。前端不得实现风险计算、推荐排序、餐厅随机选择或高德 Web Service 调用。
 
-后端 File Evidence 默认读取 `${EVIDENCE_FILE:classpath:evidence/restaurant-evidence.json}`；主资源文件为空，缺失、损坏或无匹配记录都会降级，不中断推荐。开发环境变量与文件格式见 [`backend/README.md`](backend/README.md)。
+后端百度链路由 `BAIDU_ENABLED` 控制，服务端 AK 只允许通过 `BAIDU_MAP_AK` 注入。百度失败、无匹配或字段缺失都不会中断高德主推荐；File Evidence 继续作为评论型扩展点。开发环境变量与降级规则见 [`backend/README.md`](backend/README.md)。
 
 网络请求统一通过 `src/api/client.ts`，页面不得直接调用 `uni.request`。定位和权限设置分别通过 `src/services/location.ts` 与 `src/services/platform.ts`，页面不得直接调用 `wx.*`。

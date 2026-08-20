@@ -23,23 +23,35 @@ public record Restaurant(
         BusinessStatus businessStatus,
         String openingHours,
         String address,
+        String telephone,
         DataCompleteness dataCompleteness
 ) {
+    /** V0.2 兼容构造器；旧测试夹具和 File Evidence 不需要提供电话。 */
+    public Restaurant(UUID id, String source, String sourcePoiId, String name,
+                      double latitude, double longitude, int distanceMeters,
+                      String categoryCode, String categoryLabel, Double rating,
+                      Integer reviewCount, Integer averagePrice, BusinessStatus businessStatus,
+                      String openingHours, String address, DataCompleteness dataCompleteness) {
+        this(id, source, sourcePoiId, name, latitude, longitude, distanceMeters,
+                categoryCode, categoryLabel, rating, reviewCount, averagePrice, businessStatus,
+                openingHours, address, null, dataCompleteness);
+    }
+
     public Restaurant withId(UUID newId) {
         return new Restaurant(newId, source, sourcePoiId, name, latitude, longitude, distanceMeters,
                 categoryCode, categoryLabel, rating, reviewCount, averagePrice, businessStatus,
-                openingHours, address, dataCompleteness);
+                openingHours, address, telephone, dataCompleteness);
     }
 
     public Restaurant withDistance(int newDistance) {
         return new Restaurant(id, source, sourcePoiId, name, latitude, longitude, newDistance,
                 categoryCode, categoryLabel, rating, reviewCount, averagePrice, businessStatus,
-                openingHours, address, dataCompleteness);
+                openingHours, address, telephone, dataCompleteness);
     }
 
     public Restaurant withRating(Double newRating) {
         return new Restaurant(id, source, sourcePoiId, name, latitude, longitude, distanceMeters,
                 categoryCode, categoryLabel, newRating, reviewCount, averagePrice, businessStatus,
-                openingHours, address, dataCompleteness);
+                openingHours, address, telephone, dataCompleteness);
     }
 }

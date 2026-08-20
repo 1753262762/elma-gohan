@@ -7,6 +7,7 @@ public record RecommendationResponse(
         String recommendationId,
         RestaurantSummary restaurant,
         RiskAssessment risk,
+        EvidenceSummaryResponse evidenceSummary,
         List<String> reasons,
         int alternativesRemaining
 ) {

@@ -24,7 +24,7 @@ class LowRegretScorerTest {
     private final LowRegretScorer scorer = new LowRegretScorer(props);
 
     private RiskResult risk(int score) {
-        return new RiskResult(score, RiskLevel.LOW, List.of("评分稳定"), "risk-v0.2");
+        return new RiskResult(score, RiskLevel.LOW, List.of("评分稳定"), "risk-v0.3");
     }
 
     @Test
@@ -81,9 +81,9 @@ class LowRegretScorerTest {
         Restaurant restaurant = category("c", "CHINESE");
         var condition = new SearchCondition(1000, null, "ANY", List.of());
         RiskResult trusted = new RiskResult(0, RiskLevel.LOW, 1.0, RiskFactors.empty(),
-                List.of("证据充分"), "risk-v0.2");
+                List.of("证据充分"), "risk-v0.3");
         RiskResult uncertain = new RiskResult(0, RiskLevel.LOW, 0.0, RiskFactors.empty(),
-                List.of("证据不足"), "risk-v0.2");
+                List.of("证据不足"), "risk-v0.3");
 
         assertThat(scorer.score(restaurant, trusted, condition))
                 .isGreaterThan(scorer.score(restaurant, uncertain, condition));

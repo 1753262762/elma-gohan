@@ -23,11 +23,12 @@ class RuleBasedRiskEngineTest {
                 RestaurantEvidence.empty());
 
         assertThat(result.riskScore()).isBetween(0, 100);
-        assertThat(result.riskLevel()).isEqualTo(RiskLevel.MEDIUM_LOW);
-        assertThat(result.confidence()).isEqualTo(0.25);
-        assertThat(result.factors().dataInsufficientRisk()).isEqualTo(85);
-        assertThat(result.reasons()).anyMatch(reason -> reason.contains("暂无外部评论证据"));
-        assertThat(result.algorithmVersion()).isEqualTo("risk-v0.2");
+        assertThat(result.riskLevel()).isEqualTo(RiskLevel.LOW);
+        assertThat(result.confidence()).isEqualTo(0.5);
+        assertThat(result.factors().dataInsufficientRisk()).isEqualTo(25);
+        assertThat(result.factors().crossPlatformConflictRisk()).isZero();
+        assertThat(result.reasons()).anyMatch(reason -> reason.contains("百度暂未匹配"));
+        assertThat(result.algorithmVersion()).isEqualTo("risk-v0.3");
     }
 
     @Test
@@ -43,7 +44,7 @@ class RuleBasedRiskEngineTest {
         RiskResult withEvidence = engine.evaluate(restaurant,
                 RestaurantEvidence.available("TEST", reviews, now));
 
-        assertThat(withEvidence.riskScore()).isLessThan(empty.riskScore());
+        assertThat(withEvidence.riskScore()).isNotEqualTo(empty.riskScore());
         assertThat(withEvidence.confidence()).isGreaterThan(empty.confidence());
         assertThat(withEvidence.factors().ratingRisk()).isZero();
     }

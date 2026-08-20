@@ -3,6 +3,9 @@ export type CategoryFilterCode = 'MEAL' | 'FAST_FOOD' | 'DESSERT_DRINK' | 'ANY'
 export type FeedbackResult = 'LIKE' | 'NORMAL' | 'DISLIKE'
 export type RiskLevel = 'LOW' | 'MEDIUM_LOW' | 'MEDIUM' | 'HIGH'
 export type BusinessStatus = 'OPEN' | 'CLOSED' | 'UNKNOWN'
+export type EvidenceStatus = 'AVAILABLE' | 'NO_DATA' | 'UNAVAILABLE'
+export type EntityMatchStatus = 'MATCHED' | 'AMBIGUOUS' | 'NO_MATCH' | 'UNAVAILABLE'
+export type ConsistencyLevel = 'CONSISTENT' | 'SLIGHT_DIFFERENCE' | 'CONFLICT' | 'UNKNOWN'
 
 export interface CreateRecommendationRequest {
   latitude: number
@@ -29,8 +32,29 @@ export interface RecommendationResponse {
   recommendationId: string
   restaurant: RestaurantSummary
   risk: RiskAssessment
+  evidenceSummary?: EvidenceSummary | null
   reasons: string[]
   alternativesRemaining: number
+}
+
+export interface EvidenceSummary {
+  matchStatus: EntityMatchStatus
+  matchConfidence: number | null
+  consistency: ConsistencyLevel
+  ratingDifference: number | null
+  reason: string
+  amap: EvidenceSourceSummary
+  baidu: EvidenceSourceSummary
+}
+
+export interface EvidenceSourceSummary {
+  status: EvidenceStatus
+  rating: number | null
+  tasteRating: number | null
+  serviceRating: number | null
+  environmentRating: number | null
+  averagePrice: number | null
+  commentCount: number | null
 }
 
 export interface RestaurantSummary {

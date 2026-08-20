@@ -59,6 +59,9 @@ public class RestaurantEntity {
     @Column(name = "address", length = 255)
     private String address;
 
+    @Column(name = "telephone", length = 128)
+    private String telephone;
+
     @Column(name = "data_completeness", length = 16, nullable = false)
     @Enumerated(EnumType.STRING)
     private DataCompleteness dataCompleteness;
@@ -75,7 +78,8 @@ public class RestaurantEntity {
     public RestaurantEntity(UUID id, String source, String sourcePoiId, String name, double latitude,
                             double longitude, String categoryCode, String categoryLabel, Double rating,
                             Integer reviewCount, Integer averagePrice, BusinessStatus businessStatus,
-                            String openingHours, String address, DataCompleteness dataCompleteness,
+                            String openingHours, String address, String telephone,
+                            DataCompleteness dataCompleteness,
                             LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.source = source;
@@ -91,6 +95,7 @@ public class RestaurantEntity {
         this.businessStatus = businessStatus;
         this.openingHours = openingHours;
         this.address = address;
+        this.telephone = telephone;
         this.dataCompleteness = dataCompleteness;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
@@ -110,6 +115,7 @@ public class RestaurantEntity {
     public BusinessStatus getBusinessStatus() { return businessStatus; }
     public String getOpeningHours() { return openingHours; }
     public String getAddress() { return address; }
+    public String getTelephone() { return telephone; }
     public DataCompleteness getDataCompleteness() { return dataCompleteness; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }

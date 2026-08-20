@@ -105,6 +105,7 @@ class RecommendationApiTest {
         jdbc.update("DELETE FROM recommendation_candidate");
         jdbc.update("DELETE FROM recommendation_log");
         jdbc.update("DELETE FROM risk_result");
+        jdbc.update("DELETE FROM external_entity_mapping");
         jdbc.update("DELETE FROM restaurant");
     }
 
@@ -130,15 +131,20 @@ class RecommendationApiTest {
         assertThat(risk.get("riskLevel").asText()).isIn("LOW", "MEDIUM_LOW", "MEDIUM", "HIGH");
         assertThat(risk.get("confidence").asDouble()).isBetween(0.0, 1.0);
         assertThat(risk.get("reasons").size()).isGreaterThanOrEqualTo(1);
-        assertThat(risk.get("algorithmVersion").asText()).isEqualTo("risk-v0.2");
+        assertThat(risk.get("algorithmVersion").asText()).isEqualTo("risk-v0.3");
+        JsonNode evidenceSummary = body.get("evidenceSummary");
+        assertThat(evidenceSummary).isNotNull();
+        assertThat(evidenceSummary.get("matchStatus").asText()).isEqualTo("UNAVAILABLE");
+        assertThat(evidenceSummary.get("amap").get("status").asText()).isEqualTo("AVAILABLE");
+        assertThat(evidenceSummary.get("baidu").get("status").asText()).isEqualTo("UNAVAILABLE");
         assertThat(body.get("reasons").size()).isBetween(1, 5);
         assertThat(body.get("alternativesRemaining").asInt()).isBetween(0, 5);
         // 落库校验:推荐日志含条件快照与双算法版本
         Integer logs = jdbc.queryForObject(
                 "SELECT count(*) FROM recommendation_log WHERE request_condition_json IS NOT NULL "
                         + "AND recommended_restaurant_id = current_restaurant_id "
-                        + "AND risk_algorithm_version = 'risk-v0.2' "
-                        + "AND recommendation_algorithm_version = 'recommendation-v0.2'", Integer.class);
+                        + "AND risk_algorithm_version = 'risk-v0.3' "
+                        + "AND recommendation_algorithm_version = 'recommendation-v0.3'", Integer.class);
         assertThat(logs).isEqualTo(1);
     }
 

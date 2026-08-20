@@ -55,6 +55,25 @@
       </text>
     </view>
 
+    <view v-if="recommendation.evidenceSummary" class="evidence-section">
+      <view class="evidence-heading">
+        <text class="evidence-title">数据来源</text>
+        <text class="evidence-match">{{ evidenceMatchLabel }}</text>
+      </view>
+      <view class="evidence-platforms">
+        <view class="evidence-platform">
+          <text class="evidence-source">高德</text>
+          <text class="evidence-rating">{{ formatRating(recommendation.evidenceSummary.amap.rating) }}</text>
+        </view>
+        <view class="evidence-platform">
+          <text class="evidence-source">百度</text>
+          <text class="evidence-rating">{{ formatRating(recommendation.evidenceSummary.baidu.rating) }}</text>
+        </view>
+      </view>
+      <text v-if="baiduDetailRatings" class="evidence-details">{{ baiduDetailRatings }}</text>
+      <text class="evidence-reason">{{ recommendation.evidenceSummary.reason }}</text>
+    </view>
+
     <view class="reason-section">
       <view class="reason-heading">
         <text class="reason-title">为什么是它</text>
@@ -159,6 +178,23 @@ const riskSignalLevel = computed(() =>
   recommendation.value ? riskSignalLevels[recommendation.value.risk.riskLevel] : 0,
 )
 const visibleRiskReasons = computed(() => recommendation.value?.risk.reasons.slice(0, 2) ?? [])
+const evidenceMatchLabel = computed(() => {
+  switch (recommendation.value?.evidenceSummary?.matchStatus) {
+    case 'MATCHED': return '已匹配同一门店'
+    case 'AMBIGUOUS': return '存在相似门店'
+    case 'UNAVAILABLE': return '百度暂不可用'
+    default: return '百度暂未匹配'
+  }
+})
+const baiduDetailRatings = computed(() => {
+  const source = recommendation.value?.evidenceSummary?.baidu
+  if (!source) return ''
+  return [
+    source.tasteRating === null ? '' : `口味 ${source.tasteRating.toFixed(1)}`,
+    source.serviceRating === null ? '' : `服务 ${source.serviceRating.toFixed(1)}`,
+    source.environmentRating === null ? '' : `环境 ${source.environmentRating.toFixed(1)}`,
+  ].filter(Boolean).join(' · ')
+})
 const selectedFeedback = computed(() => recommendationStore.getCurrentFeedback())
 const operationBusy = computed(
   () => rerolling.value || navigating.value || submittingFeedback.value,
@@ -174,6 +210,10 @@ function formatDistance(distanceMeters: number) {
 
 function formatPrice(averagePrice: number | null) {
   return averagePrice === null ? '暂无' : `¥${averagePrice}`
+}
+
+function formatRating(rating: number | null) {
+  return rating === null ? '暂无评分' : rating.toFixed(1)
 }
 
 function goHome() {
@@ -447,6 +487,72 @@ async function submitFeedback(result: FeedbackResult) {
 .risk-strip--medium .risk-dot--active,
 .risk-strip--high .risk-dot--active {
   background: #a86145;
+}
+
+.evidence-section {
+  margin-top: 26rpx;
+  padding: 24rpx;
+  border: 2rpx solid #dfe2ed;
+  border-radius: 12rpx;
+  background: #f7f8fc;
+}
+
+.evidence-heading,
+.evidence-platforms,
+.evidence-platform {
+  display: flex;
+}
+
+.evidence-heading {
+  justify-content: space-between;
+  align-items: center;
+}
+
+.evidence-title {
+  color: #303851;
+  font-size: 23rpx;
+  font-weight: 700;
+}
+
+.evidence-match {
+  color: #68718a;
+  font-size: 17rpx;
+}
+
+.evidence-platforms {
+  gap: 16rpx;
+  margin-top: 18rpx;
+}
+
+.evidence-platform {
+  flex: 1;
+  justify-content: space-between;
+  padding: 15rpx 17rpx;
+  background: #ffffff;
+}
+
+.evidence-source {
+  color: #747d97;
+  font-size: 18rpx;
+}
+
+.evidence-rating {
+  color: #303851;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.evidence-details,
+.evidence-reason {
+  display: block;
+  margin-top: 14rpx;
+  color: #59627c;
+  font-size: 18rpx;
+  line-height: 1.5;
+}
+
+.evidence-reason {
+  color: #3f4862;
 }
 
 .reason-section {

@@ -2,11 +2,11 @@ package com.elma.gohan.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-/** risk-v0.2 的全部阈值与权重，规则实现中不保留业务数字。 */
+/** risk-v0.3 的全部阈值与权重，规则实现中不保留业务数字。 */
 @ConfigurationProperties(prefix = "elma.risk")
 public class RiskProperties {
 
-    private String algorithmVersion = "risk-v0.2";
+    private String algorithmVersion = "risk-v0.3";
     private Rating rating = new Rating();
     private Template template = new Template();
     private Burst burst = new Burst();
@@ -14,6 +14,7 @@ public class RiskProperties {
     private DataInsufficient dataInsufficient = new DataInsufficient();
     private Confidence confidence = new Confidence();
     private Weights weights = new Weights();
+    private CrossPlatform crossPlatform = new CrossPlatform();
     private Levels levels = new Levels();
     private double priceAnomalyRatio = 1.5;
 
@@ -33,6 +34,8 @@ public class RiskProperties {
     public void setConfidence(Confidence v) { confidence = v; }
     public Weights getWeights() { return weights; }
     public void setWeights(Weights v) { weights = v; }
+    public CrossPlatform getCrossPlatform() { return crossPlatform; }
+    public void setCrossPlatform(CrossPlatform v) { crossPlatform = v; }
     public Levels getLevels() { return levels; }
     public void setLevels(Levels v) { levels = v; }
     public double getPriceAnomalyRatio() { return priceAnomalyRatio; }
@@ -153,6 +156,13 @@ public class RiskProperties {
         private int openingHoursMissing = 10;
         private int priceMissing = 5;
         private int priceAnomaly = 20;
+        private int baiduUnavailable = 30;
+        private int baiduNoMatch = 25;
+        private int baiduRatingMissing = 15;
+        private int amapRatingMissing = 20;
+        private int bothCommentCountMissing = 10;
+        private int bothPriceMissing = 5;
+        private int bothOpeningHoursMissing = 5;
         public int getNoDataRisk() { return noDataRisk; }
         public void setNoDataRisk(int v) { noDataRisk = v; }
         public int getUnavailableRisk() { return unavailableRisk; }
@@ -171,26 +181,56 @@ public class RiskProperties {
         public void setPriceMissing(int v) { priceMissing = v; }
         public int getPriceAnomaly() { return priceAnomaly; }
         public void setPriceAnomaly(int v) { priceAnomaly = v; }
+        public int getBaiduUnavailable() { return baiduUnavailable; }
+        public void setBaiduUnavailable(int v) { baiduUnavailable = v; }
+        public int getBaiduNoMatch() { return baiduNoMatch; }
+        public void setBaiduNoMatch(int v) { baiduNoMatch = v; }
+        public int getBaiduRatingMissing() { return baiduRatingMissing; }
+        public void setBaiduRatingMissing(int v) { baiduRatingMissing = v; }
+        public int getAmapRatingMissing() { return amapRatingMissing; }
+        public void setAmapRatingMissing(int v) { amapRatingMissing = v; }
+        public int getBothCommentCountMissing() { return bothCommentCountMissing; }
+        public void setBothCommentCountMissing(int v) { bothCommentCountMissing = v; }
+        public int getBothPriceMissing() { return bothPriceMissing; }
+        public void setBothPriceMissing(int v) { bothPriceMissing = v; }
+        public int getBothOpeningHoursMissing() { return bothOpeningHoursMissing; }
+        public void setBothOpeningHoursMissing(int v) { bothOpeningHoursMissing = v; }
     }
 
     public static class Confidence {
         private double poiWeight = 0.25;
         private double evidenceWeight = 0.75;
         private int targetReviews = 30;
+        private double amapWeight = 0.35;
+        private double baiduWeight = 0.35;
+        private double matchWeight = 0.30;
+        private double singleSourceWeight = 0.50;
+        private double singleSourceCap = 0.50;
         public double getPoiWeight() { return poiWeight; }
         public void setPoiWeight(double v) { poiWeight = v; }
         public double getEvidenceWeight() { return evidenceWeight; }
         public void setEvidenceWeight(double v) { evidenceWeight = v; }
         public int getTargetReviews() { return targetReviews; }
         public void setTargetReviews(int v) { targetReviews = v; }
+        public double getAmapWeight() { return amapWeight; }
+        public void setAmapWeight(double v) { amapWeight = v; }
+        public double getBaiduWeight() { return baiduWeight; }
+        public void setBaiduWeight(double v) { baiduWeight = v; }
+        public double getMatchWeight() { return matchWeight; }
+        public void setMatchWeight(double v) { matchWeight = v; }
+        public double getSingleSourceWeight() { return singleSourceWeight; }
+        public void setSingleSourceWeight(double v) { singleSourceWeight = v; }
+        public double getSingleSourceCap() { return singleSourceCap; }
+        public void setSingleSourceCap(double v) { singleSourceCap = v; }
     }
 
     public static class Weights {
-        private double rating = 0.25;
-        private double template = 0.20;
-        private double burst = 0.15;
-        private double trend = 0.15;
+        private double rating = 0.20;
+        private double template = 0.15;
+        private double burst = 0.10;
+        private double trend = 0.10;
         private double dataInsufficient = 0.25;
+        private double crossPlatformConflict = 0.20;
         public double getRating() { return rating; }
         public void setRating(double v) { rating = v; }
         public double getTemplate() { return template; }
@@ -201,6 +241,23 @@ public class RiskProperties {
         public void setTrend(double v) { trend = v; }
         public double getDataInsufficient() { return dataInsufficient; }
         public void setDataInsufficient(double v) { dataInsufficient = v; }
+        public double getCrossPlatformConflict() { return crossPlatformConflict; }
+        public void setCrossPlatformConflict(double v) { crossPlatformConflict = v; }
+    }
+
+    public static class CrossPlatform {
+        private double consistentMaxDifference = 0.2;
+        private double conflictStartDifference = 0.7;
+        private double fullRiskDifference = 1.0;
+        private int conflictStartRisk = 60;
+        public double getConsistentMaxDifference() { return consistentMaxDifference; }
+        public void setConsistentMaxDifference(double v) { consistentMaxDifference = v; }
+        public double getConflictStartDifference() { return conflictStartDifference; }
+        public void setConflictStartDifference(double v) { conflictStartDifference = v; }
+        public double getFullRiskDifference() { return fullRiskDifference; }
+        public void setFullRiskDifference(double v) { fullRiskDifference = v; }
+        public int getConflictStartRisk() { return conflictStartRisk; }
+        public void setConflictStartRisk(int v) { conflictStartRisk = v; }
     }
 
     public static class Levels {

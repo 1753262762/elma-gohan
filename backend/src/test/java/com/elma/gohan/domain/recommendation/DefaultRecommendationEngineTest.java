@@ -25,7 +25,7 @@ class DefaultRecommendationEngineTest {
     private Map<String, RiskResult> risks(List<Restaurant> restaurants) {
         return restaurants.stream().collect(Collectors.toMap(
                 Restaurant::sourcePoiId,
-                r -> new RiskResult(10, RiskLevel.LOW, List.of("评分稳定"), "risk-v0.2")));
+                r -> new RiskResult(10, RiskLevel.LOW, List.of("评分稳定"), "risk-v0.3")));
     }
 
     @Test
@@ -39,7 +39,7 @@ class DefaultRecommendationEngineTest {
         assertThat(result.pool()).hasSize(6);
         assertThat(result.pool()).extracting(c -> c.restaurant().sourcePoiId())
                 .doesNotHaveDuplicates();
-        assertThat(result.algorithmVersion()).isEqualTo("recommendation-v0.2");
+        assertThat(result.algorithmVersion()).isEqualTo("recommendation-v0.3");
     }
 
     @Test
@@ -74,8 +74,8 @@ class DefaultRecommendationEngineTest {
         Restaurant good = TestRestaurants.full("good", 4.6, 200);
         Restaurant bad = TestRestaurants.full("bad", 4.6, 200);
         var risks = Map.of(
-                "good", new RiskResult(10, RiskLevel.LOW, List.of("评分稳定"), "risk-v0.2"),
-                "bad", new RiskResult(80, RiskLevel.HIGH, List.of("评分偏低"), "risk-v0.2"));
+                "good", new RiskResult(10, RiskLevel.LOW, List.of("评分稳定"), "risk-v0.3"),
+                "bad", new RiskResult(80, RiskLevel.HIGH, List.of("评分偏低"), "risk-v0.3"));
         var result = engine.recommend(List.of(good, bad), risks,
                 new UserPreference(new SearchCondition(1000, null, "ANY", List.of())));
         assertThat(result.pool()).extracting(c -> c.restaurant().sourcePoiId()).containsExactly("good");

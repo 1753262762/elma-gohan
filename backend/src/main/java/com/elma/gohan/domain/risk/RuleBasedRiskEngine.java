@@ -3,6 +3,11 @@ package com.elma.gohan.domain.risk;
 import com.elma.gohan.config.RiskProperties;
 import com.elma.gohan.domain.restaurant.Restaurant;
 import com.elma.gohan.provider.evidence.EvidenceStatus;
+import com.elma.gohan.provider.evidence.EvidenceBundle;
+import com.elma.gohan.provider.evidence.EntityMatchResult;
+import com.elma.gohan.provider.evidence.EntityMatchStatus;
+import com.elma.gohan.provider.evidence.PlatformEvidence;
+import com.elma.gohan.provider.evidence.CrossPlatformConsistency;
 import com.elma.gohan.provider.evidence.RestaurantEvidence;
 import com.elma.gohan.provider.evidence.ReviewEvidence;
 import java.util.ArrayList;
@@ -12,7 +17,7 @@ import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-/** risk-v0.2：基础评分、评论模板、时间突发、近期趋势和数据不足的透明规则模型。 */
+/** risk-v0.3：多源评分、评论异常、数据不足和跨平台冲突的透明规则模型。 */
 @Component
 public class RuleBasedRiskEngine implements RiskEngine {
 
@@ -41,11 +46,23 @@ public class RuleBasedRiskEngine implements RiskEngine {
 
     @Override
     public RiskResult evaluate(Restaurant restaurant, RestaurantEvidence suppliedEvidence) {
-        RestaurantEvidence evidence = suppliedEvidence == null
-                ? RestaurantEvidence.unavailable("UNKNOWN") : suppliedEvidence;
+        PlatformEvidence amap = new PlatformEvidence("AMAP", restaurant.sourcePoiId(),
+                EvidenceStatus.AVAILABLE, null, restaurant.name(), restaurant.address(),
+                restaurant.latitude(), restaurant.longitude(), restaurant.rating(), null, null,
+                null, restaurant.reviewCount(), restaurant.averagePrice(),
+                restaurant.openingHours(), null, restaurant.telephone());
+        return evaluate(restaurant, new EvidenceBundle(suppliedEvidence, amap, null,
+                EntityMatchResult.noMatch(),
+                CrossPlatformConsistency.unknown("百度暂未匹配到同一门店")));
+    }
+
+    @Override
+    public RiskResult evaluate(Restaurant restaurant, EvidenceBundle suppliedBundle) {
+        EvidenceBundle bundle = suppliedBundle == null ? legacyUnavailable(restaurant) : suppliedBundle;
+        RestaurantEvidence evidence = bundle.reviewEvidence();
         Set<String> reasons = new LinkedHashSet<>();
 
-        int ratingRisk = ratingRisk(restaurant, reasons);
+        int ratingRisk = ratingRisk(consensusRating(bundle), reasons);
         TemplateDetectionResult template = templateDetector.detect(evidence.reviews());
         int templateRisk = linearRisk(template.templateRatio(),
                 properties.getTemplate().getRatioStart(), properties.getTemplate().getRatioFull());
@@ -64,11 +81,13 @@ public class RuleBasedRiskEngine implements RiskEngine {
         if (trend == RecentTrend.DOWN) reasons.add("近期口碑较历史明显下降");
         if (trend == RecentTrend.UP) reasons.add("近期口碑有所改善");
 
-        int insufficientRisk = dataInsufficientRisk(restaurant, evidence, reasons);
+        int insufficientRisk = dataInsufficientRisk(bundle, reasons);
+        int conflictRisk = bundle.consistency().crossPlatformConflictRisk();
+        if (conflictRisk > 0) reasons.add(bundle.consistency().reason());
         RiskFactors factors = new RiskFactors(ratingRisk, templateRisk, burst.burstRisk(),
-                trendRisk, insufficientRisk);
+                trendRisk, insufficientRisk, conflictRisk);
         int score = weightedScore(factors);
-        double confidence = confidence(restaurant, evidence);
+        double confidence = confidence(bundle);
 
         if (evidence.status() == EvidenceStatus.AVAILABLE && templateRisk == 0
                 && burst.burstRisk() == 0 && trend != RecentTrend.DOWN) {
@@ -79,21 +98,21 @@ public class RuleBasedRiskEngine implements RiskEngine {
         if (visibleReasons.size() > 5) visibleReasons = visibleReasons.subList(0, 5);
 
         return new RiskResult(score, levelOf(score), confidence, factors,
-                visibleReasons, properties.getAlgorithmVersion());
+                visibleReasons, properties.getAlgorithmVersion(), bundle.summary());
     }
 
-    private int ratingRisk(Restaurant restaurant, Set<String> reasons) {
+    private int ratingRisk(Double effectiveRating, Set<String> reasons) {
         RiskProperties.Rating rating = properties.getRating();
-        if (restaurant.rating() == null) {
+        if (effectiveRating == null) {
             reasons.add("评分数据缺失");
             return rating.getMissingRisk();
         }
-        if (restaurant.rating() >= rating.getExcellentMin()) return rating.getExcellentRisk();
-        if (restaurant.rating() >= rating.getGoodMin()) {
+        if (effectiveRating >= rating.getExcellentMin()) return rating.getExcellentRisk();
+        if (effectiveRating >= rating.getGoodMin()) {
             reasons.add("基础评分良好但未达优秀");
             return rating.getGoodRisk();
         }
-        if (restaurant.rating() >= rating.getFairMin()) {
+        if (effectiveRating >= rating.getFairMin()) {
             reasons.add("基础评分一般");
             return rating.getFairRisk();
         }
@@ -101,39 +120,45 @@ public class RuleBasedRiskEngine implements RiskEngine {
         return rating.getPoorRisk();
     }
 
-    private int dataInsufficientRisk(Restaurant restaurant, RestaurantEvidence evidence,
-                                     Set<String> reasons) {
+    private int dataInsufficientRisk(EvidenceBundle bundle, Set<String> reasons) {
         RiskProperties.DataInsufficient data = properties.getDataInsufficient();
-        int risk;
-        if (evidence.status() == EvidenceStatus.UNAVAILABLE) {
-            risk = data.getUnavailableRisk();
-            reasons.add("外部证据服务暂不可用，风险判断可信度较低");
-        } else if (evidence.status() == EvidenceStatus.NO_DATA) {
-            risk = data.getNoDataRisk();
-            reasons.add("暂无外部评论证据，风险判断可信度较低");
-        } else {
-            double missingRatio = 1.0 - Math.min(1.0,
-                    (double) evidence.reviews().size() / Math.max(1, data.getTargetReviews()));
-            risk = (int) Math.round(missingRatio * data.getSampleShortageMaxRisk());
-            if (evidence.reviews().size() < data.getTargetReviews()) {
-                reasons.add("外部评论样本不足");
-            }
+        PlatformEvidence amap = bundle.amap();
+        PlatformEvidence baidu = bundle.baidu();
+        int risk = 0;
+        if (bundle.entityMatch().status() == EntityMatchStatus.UNAVAILABLE) {
+            risk += data.getBaiduUnavailable();
+            reasons.add("百度证据暂不可用，已按高德数据继续判断");
+        } else if (bundle.entityMatch().status() != EntityMatchStatus.MATCHED) {
+            risk += data.getBaiduNoMatch();
+            reasons.add(bundle.entityMatch().status() == EntityMatchStatus.AMBIGUOUS
+                    ? "百度存在相似门店，暂不合并评分" : "百度暂未匹配到同一门店");
+        } else if (baidu == null || baidu.overallRating() == null) {
+            risk += data.getBaiduRatingMissing();
+            reasons.add("百度综合评分缺失");
         }
-        if (restaurant.reviewCount() == null
-                || restaurant.reviewCount() < data.getPoiReviewCountThreshold()) {
-            risk += data.getReviewCountMissing();
-            reasons.add("平台评价数量不足");
+        if (amap == null || amap.overallRating() == null) {
+            risk += data.getAmapRatingMissing();
+            reasons.add("高德评分数据缺失");
         }
-        if (restaurant.openingHours() == null || restaurant.openingHours().isBlank()) {
-            risk += data.getOpeningHoursMissing();
-            reasons.add("营业信息缺失");
+        if ((amap == null || amap.commentCount() == null)
+                && (baidu == null || baidu.commentCount() == null)) {
+            risk += data.getBothCommentCountMissing();
+            reasons.add("两平台评价数量均缺失");
         }
-        if (restaurant.averagePrice() == null) {
-            risk += data.getPriceMissing();
-            reasons.add("价格信息缺失");
-        } else if (evidence.poolAveragePrice() != null && evidence.poolAveragePrice() > 0
-                && restaurant.averagePrice()
-                > evidence.poolAveragePrice() * properties.getPriceAnomalyRatio()) {
+        if ((amap == null || amap.averagePrice() == null)
+                && (baidu == null || baidu.averagePrice() == null)) {
+            risk += data.getBothPriceMissing();
+            reasons.add("两平台价格信息均缺失");
+        }
+        if ((amap == null || amap.openingHours() == null || amap.openingHours().isBlank())
+                && (baidu == null || baidu.openingHours() == null || baidu.openingHours().isBlank())) {
+            risk += data.getBothOpeningHoursMissing();
+            reasons.add("两平台营业信息均缺失");
+        }
+        RestaurantEvidence reviews = bundle.reviewEvidence();
+        if (amap != null && amap.averagePrice() != null && reviews.poolAveragePrice() != null
+                && reviews.poolAveragePrice() > 0
+                && amap.averagePrice() > reviews.poolAveragePrice() * properties.getPriceAnomalyRatio()) {
             risk += data.getPriceAnomaly();
             reasons.add("价格明显高于同批候选");
         }
@@ -146,20 +171,28 @@ public class RuleBasedRiskEngine implements RiskEngine {
                 + factors.templateRisk() * weights.getTemplate()
                 + factors.burstRisk() * weights.getBurst()
                 + factors.trendRisk() * weights.getTrend()
-                + factors.dataInsufficientRisk() * weights.getDataInsufficient();
+                + factors.dataInsufficientRisk() * weights.getDataInsufficient()
+                + factors.crossPlatformConflictRisk() * weights.getCrossPlatformConflict();
         return clamp((int) Math.round(score));
     }
 
-    private double confidence(Restaurant restaurant, RestaurantEvidence evidence) {
+    private double confidence(EvidenceBundle bundle) {
         RiskProperties.Confidence config = properties.getConfidence();
-        int complete = 0;
-        if (restaurant.rating() != null) complete++;
-        if (restaurant.reviewCount() != null) complete++;
-        if (restaurant.openingHours() != null && !restaurant.openingHours().isBlank()) complete++;
-        if (restaurant.averagePrice() != null) complete++;
-        double poi = complete / 4.0;
+        double amapCompleteness = amapCompleteness(bundle.amap());
 
-        double evidenceConfidence = 0.0;
+        double value;
+        if (bundle.entityMatch().status() == EntityMatchStatus.MATCHED
+                && bundle.baidu() != null && bundle.entityMatch().confidence() != null) {
+            value = config.getAmapWeight() * amapCompleteness
+                    + config.getBaiduWeight() * baiduCompleteness(bundle.baidu())
+                    + config.getMatchWeight() * bundle.entityMatch().confidence();
+        } else {
+            value = Math.min(config.getSingleSourceCap(),
+                    config.getSingleSourceWeight() * amapCompleteness);
+        }
+
+        // 可选 File Evidence 仍能提高可信度，但默认真实链路不依赖它。
+        RestaurantEvidence evidence = bundle.reviewEvidence();
         if (evidence.status() == EvidenceStatus.AVAILABLE && !evidence.reviews().isEmpty()) {
             List<ReviewEvidence> reviews = evidence.reviews();
             double volume = Math.min(1.0,
@@ -167,11 +200,53 @@ public class RuleBasedRiskEngine implements RiskEngine {
             double text = coverage(reviews, r -> r.text() != null && !r.text().isBlank());
             double rating = coverage(reviews, r -> r.rating() != null);
             double time = coverage(reviews, r -> r.createdAt() != null);
-            evidenceConfidence = volume * (text + rating + time) / 3.0;
+            double reviewConfidence = volume * (text + rating + time) / 3.0;
+            value = Math.max(value, config.getPoiWeight() * amapCompleteness
+                    + config.getEvidenceWeight() * reviewConfidence);
         }
-        double value = config.getPoiWeight() * poi
-                + config.getEvidenceWeight() * evidenceConfidence;
         return Math.round(Math.max(0.0, Math.min(1.0, value)) * 1000.0) / 1000.0;
+    }
+
+    private double amapCompleteness(PlatformEvidence evidence) {
+        if (evidence == null) return 0.0;
+        int present = 0;
+        if (evidence.overallRating() != null) present++;
+        if (evidence.averagePrice() != null) present++;
+        if (evidence.openingHours() != null && !evidence.openingHours().isBlank()) present++;
+        if (evidence.address() != null && !evidence.address().isBlank()) present++;
+        return present / 4.0;
+    }
+
+    private double baiduCompleteness(PlatformEvidence evidence) {
+        if (evidence == null || evidence.status() != EvidenceStatus.AVAILABLE) return 0.0;
+        double score = 0.0;
+        if (evidence.overallRating() != null) score += 0.40;
+        if (evidence.commentCount() != null) score += 0.20;
+        if (evidence.averagePrice() != null) score += 0.15;
+        if (evidence.openingHours() != null && !evidence.openingHours().isBlank()) score += 0.10;
+        if (evidence.tasteRating() != null || evidence.serviceRating() != null
+                || evidence.environmentRating() != null) score += 0.15;
+        return score;
+    }
+
+    private Double consensusRating(EvidenceBundle bundle) {
+        Double amap = bundle.amap() == null ? null : bundle.amap().overallRating();
+        Double baidu = bundle.entityMatch().status() == EntityMatchStatus.MATCHED
+                && bundle.baidu() != null ? bundle.baidu().overallRating() : null;
+        if (amap == null) return baidu;
+        if (baidu == null) return amap;
+        return (amap + baidu) / 2.0;
+    }
+
+    private EvidenceBundle legacyUnavailable(Restaurant restaurant) {
+        PlatformEvidence amap = new PlatformEvidence("AMAP", restaurant.sourcePoiId(),
+                EvidenceStatus.AVAILABLE, null, restaurant.name(), restaurant.address(),
+                restaurant.latitude(), restaurant.longitude(), restaurant.rating(), null, null,
+                null, restaurant.reviewCount(), restaurant.averagePrice(),
+                restaurant.openingHours(), null, restaurant.telephone());
+        return new EvidenceBundle(RestaurantEvidence.unavailable("UNKNOWN"), amap, null,
+                EntityMatchResult.unavailable(),
+                CrossPlatformConsistency.unknown("百度证据服务暂不可用"));
     }
 
     private double coverage(List<ReviewEvidence> reviews,

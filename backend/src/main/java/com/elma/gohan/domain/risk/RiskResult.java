@@ -1,5 +1,6 @@
 package com.elma.gohan.domain.risk;
 
+import com.elma.gohan.provider.evidence.EvidenceSummary;
 import java.util.List;
 
 public record RiskResult(
@@ -8,7 +9,8 @@ public record RiskResult(
         double confidence,
         RiskFactors factors,
         List<String> reasons,
-        String algorithmVersion
+        String algorithmVersion,
+        EvidenceSummary evidenceSummary
 ) {
     public RiskResult {
         riskScore = Math.max(0, Math.min(100, riskScore));
@@ -19,6 +21,11 @@ public record RiskResult(
 
     public RiskResult(int riskScore, RiskLevel riskLevel, List<String> reasons,
                       String algorithmVersion) {
-        this(riskScore, riskLevel, 1.0, RiskFactors.empty(), reasons, algorithmVersion);
+        this(riskScore, riskLevel, 1.0, RiskFactors.empty(), reasons, algorithmVersion, null);
+    }
+
+    public RiskResult(int riskScore, RiskLevel riskLevel, double confidence, RiskFactors factors,
+                      List<String> reasons, String algorithmVersion) {
+        this(riskScore, riskLevel, confidence, factors, reasons, algorithmVersion, null);
     }
 }

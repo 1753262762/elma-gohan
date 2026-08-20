@@ -34,6 +34,10 @@ public class RiskResultEntity {
     private String factorsJson;
 
     @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "evidence_summary_json", columnDefinition = "jsonb", nullable = false)
+    private String evidenceSummaryJson;
+
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "reasons_json", columnDefinition = "jsonb", nullable = false)
     private String reasonsJson;
 
@@ -47,7 +51,8 @@ public class RiskResultEntity {
     }
 
     public RiskResultEntity(UUID id, UUID restaurantId, int riskScore, String riskLevel,
-                            double confidence, String factorsJson, String reasonsJson,
+                            double confidence, String factorsJson, String evidenceSummaryJson,
+                            String reasonsJson,
                             String algorithmVersion, LocalDateTime calculatedAt) {
         this.id = id;
         this.restaurantId = restaurantId;
@@ -55,6 +60,7 @@ public class RiskResultEntity {
         this.riskLevel = riskLevel;
         this.confidence = confidence;
         this.factorsJson = factorsJson;
+        this.evidenceSummaryJson = evidenceSummaryJson;
         this.reasonsJson = reasonsJson;
         this.algorithmVersion = algorithmVersion;
         this.calculatedAt = calculatedAt;
@@ -66,6 +72,7 @@ public class RiskResultEntity {
     public String getRiskLevel() { return riskLevel; }
     public double getConfidence() { return confidence; }
     public String getFactorsJson() { return factorsJson; }
+    public String getEvidenceSummaryJson() { return evidenceSummaryJson; }
     public String getReasonsJson() { return reasonsJson; }
     public String getAlgorithmVersion() { return algorithmVersion; }
     public LocalDateTime getCalculatedAt() { return calculatedAt; }

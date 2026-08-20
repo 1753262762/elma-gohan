@@ -1,9 +1,9 @@
 openapi: 3.0.3
 info:
   title: ELMA 家今天的饭 API
-  version: 0.2.0
+  version: 0.3.0
   description: |
-    V0.2 测试版的前后端接口契约。服务端负责 POI、Evidence、风险过滤、TasteProfile、
+    V0.3 测试版的前后端接口契约。服务端负责高德 POI、百度 Evidence、实体匹配、跨平台一致性、风险过滤、TasteProfile、
     Low Regret 排序、多样化重排和候选池管理；客户端不得自行重算风险或排序。
 servers:
   - url: /api/v1
@@ -228,6 +228,11 @@ components:
           $ref: '#/components/schemas/RestaurantSummary'
         risk:
           $ref: '#/components/schemas/RiskAssessment'
+        evidenceSummary:
+          allOf:
+            - $ref: '#/components/schemas/EvidenceSummary'
+          nullable: true
+          description: V0.3 多平台证据摘要；旧客户端可忽略，不包含第三方 POI ID 或内部匹配特征。
         reasons:
           type: array
           minItems: 1
@@ -261,7 +266,29 @@ components:
           riskLevel: LOW
           confidence: 0.82
           reasons: [评分稳定, 店铺信息完整, 价格位于正常范围]
-          algorithmVersion: risk-v0.2
+          algorithmVersion: risk-v0.3
+        evidenceSummary:
+          matchStatus: MATCHED
+          matchConfidence: 0.91
+          consistency: CONFLICT
+          ratingDifference: 0.7
+          reason: 高德评分比百度高 0.7 分
+          amap:
+            status: AVAILABLE
+            rating: 4.9
+            tasteRating: null
+            serviceRating: null
+            environmentRating: null
+            averagePrice: 58
+            commentCount: null
+          baidu:
+            status: AVAILABLE
+            rating: 4.2
+            tasteRating: 4.0
+            serviceRating: null
+            environmentRating: null
+            averagePrice: 62
+            commentCount: 2600
         reasons: [距离近, 预算合适, 基础评分稳定, 数据完整度较高]
         alternativesRemaining: 5
 
@@ -375,7 +402,86 @@ components:
             type: string
         algorithmVersion:
           type: string
-          example: risk-v0.2
+          example: risk-v0.3
+
+    EvidenceSummary:
+      type: object
+      additionalProperties: false
+      required: [matchStatus, consistency, reason, amap, baidu]
+      properties:
+        matchStatus:
+          type: string
+          enum: [MATCHED, AMBIGUOUS, NO_MATCH, UNAVAILABLE]
+        matchConfidence:
+          type: number
+          format: double
+          nullable: true
+          minimum: 0
+          maximum: 1
+        consistency:
+          type: string
+          enum: [CONSISTENT, SLIGHT_DIFFERENCE, CONFLICT, UNKNOWN]
+        ratingDifference:
+          type: number
+          format: double
+          nullable: true
+          minimum: 0
+          maximum: 5
+        reason:
+          type: string
+          maxLength: 120
+        amap:
+          $ref: '#/components/schemas/EvidenceSourceSummary'
+        baidu:
+          $ref: '#/components/schemas/EvidenceSourceSummary'
+
+    EvidenceSourceSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - rating
+        - tasteRating
+        - serviceRating
+        - environmentRating
+        - averagePrice
+        - commentCount
+      properties:
+        status:
+          type: string
+          enum: [AVAILABLE, NO_DATA, UNAVAILABLE]
+        rating:
+          type: number
+          format: double
+          nullable: true
+          minimum: 0
+          maximum: 5
+        tasteRating:
+          type: number
+          format: double
+          nullable: true
+          minimum: 0
+          maximum: 5
+        serviceRating:
+          type: number
+          format: double
+          nullable: true
+          minimum: 0
+          maximum: 5
+        environmentRating:
+          type: number
+          format: double
+          nullable: true
+          minimum: 0
+          maximum: 5
+        averagePrice:
+          type: integer
+          nullable: true
+          minimum: 0
+        commentCount:
+          type: integer
+          nullable: true
+          minimum: 0
 
     SubmitFeedbackRequest:
       type: object

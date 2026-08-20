@@ -42,6 +42,10 @@ public class RecommendationCandidateEntity {
     private String riskFactorsJson;
 
     @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "evidence_summary_json", columnDefinition = "jsonb", nullable = false)
+    private String evidenceSummaryJson;
+
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "risk_reasons_json", columnDefinition = "jsonb", nullable = false)
     private String riskReasonsJson;
 
@@ -64,6 +68,7 @@ public class RecommendationCandidateEntity {
     public RecommendationCandidateEntity(UUID id, UUID recommendationLogId, UUID restaurantId, int slot,
                                          int distanceMeters, int riskScore, String riskLevel,
                                          double riskConfidence, String riskFactorsJson,
+                                         String evidenceSummaryJson,
                                          String riskReasonsJson, String riskAlgorithmVersion,
                                          double lowRegretScore, String reasonsJson, boolean shown) {
         this.id = id;
@@ -75,6 +80,7 @@ public class RecommendationCandidateEntity {
         this.riskLevel = riskLevel;
         this.riskConfidence = riskConfidence;
         this.riskFactorsJson = riskFactorsJson;
+        this.evidenceSummaryJson = evidenceSummaryJson;
         this.riskReasonsJson = riskReasonsJson;
         this.riskAlgorithmVersion = riskAlgorithmVersion;
         this.lowRegretScore = lowRegretScore;
@@ -91,6 +97,7 @@ public class RecommendationCandidateEntity {
     public String getRiskLevel() { return riskLevel; }
     public double getRiskConfidence() { return riskConfidence; }
     public String getRiskFactorsJson() { return riskFactorsJson; }
+    public String getEvidenceSummaryJson() { return evidenceSummaryJson; }
     public String getRiskReasonsJson() { return riskReasonsJson; }
     public String getRiskAlgorithmVersion() { return riskAlgorithmVersion; }
     public double getLowRegretScore() { return lowRegretScore; }

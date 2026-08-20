@@ -6,6 +6,7 @@ import com.elma.gohan.controller.api.FeedbackResponse;
 import com.elma.gohan.controller.api.RecommendationResponse;
 import com.elma.gohan.controller.api.RestaurantSummary;
 import com.elma.gohan.controller.api.RiskAssessment;
+import com.elma.gohan.controller.api.EvidenceSummaryResponse;
 import com.elma.gohan.controller.api.SubmitFeedbackRequest;
 import com.elma.gohan.domain.recommendation.RecommendationEngine;
 import com.elma.gohan.domain.recommendation.HardFilter;
@@ -29,8 +30,8 @@ import com.elma.gohan.infrastructure.persistence.RiskResultEntity;
 import com.elma.gohan.infrastructure.persistence.RiskResultRepository;
 import com.elma.gohan.infrastructure.persistence.UserFeedbackEntity;
 import com.elma.gohan.infrastructure.persistence.UserFeedbackRepository;
-import com.elma.gohan.provider.evidence.EvidenceProvider;
-import com.elma.gohan.provider.evidence.RestaurantEvidence;
+import com.elma.gohan.provider.evidence.EvidenceBundle;
+import com.elma.gohan.provider.evidence.EvidenceSummary;
 import com.elma.gohan.provider.poi.PoiProvider;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -41,8 +42,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,14 +51,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class RecommendationService {
 
-    private static final Logger log = LoggerFactory.getLogger(RecommendationService.class);
-
     private static final Set<Integer> ALLOWED_RADIUS = Set.of(500, 1000, 2000, 3000);
     private static final int MAX_ALTERNATIVES = 5;
     private static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
 
     private final PoiProvider poiProvider;
-    private final EvidenceProvider evidenceProvider;
+    private final EvidenceAggregator evidenceAggregator;
     private final RiskEngine riskEngine;
     private final RecommendationEngine recommendationEngine;
     private final HardFilter hardFilter;
@@ -72,7 +69,7 @@ public class RecommendationService {
     private final UserFeedbackRepository feedbackRepository;
     private final ObjectMapper objectMapper;
 
-    public RecommendationService(PoiProvider poiProvider, EvidenceProvider evidenceProvider,
+    public RecommendationService(PoiProvider poiProvider, EvidenceAggregator evidenceAggregator,
                                  RiskEngine riskEngine, RecommendationEngine recommendationEngine,
                                  HardFilter hardFilter, TasteProfileService tasteProfileService,
                                  RecommendationProperties recommendationProperties,
@@ -83,7 +80,7 @@ public class RecommendationService {
                                  UserFeedbackRepository feedbackRepository,
                                  ObjectMapper objectMapper) {
         this.poiProvider = poiProvider;
-        this.evidenceProvider = evidenceProvider;
+        this.evidenceAggregator = evidenceAggregator;
         this.riskEngine = riskEngine;
         this.recommendationEngine = recommendationEngine;
         this.hardFilter = hardFilter;
@@ -123,11 +120,9 @@ public class RecommendationService {
                 .filter(r -> r.averagePrice() != null)
                 .mapToInt(Restaurant::averagePrice)
                 .average().orElse(0);
-        Map<String, RiskResult> risks = riskEngine.evaluateAll(
-                eligible, r -> {
-                    RestaurantEvidence evidence = safeEvidence(r);
-                    return poolAvgPrice > 0 ? evidence.withPoolAveragePrice(poolAvgPrice) : evidence;
-                });
+        Map<String, EvidenceBundle> evidence = evidenceAggregator.collect(eligible,
+                new Location(request.latitude(), request.longitude()), radius, poolAvgPrice);
+        Map<String, RiskResult> risks = riskEngine.evaluateAllBundles(eligible, evidence);
 
         RecommendationResult result = recommendationEngine.recommend(
                 eligible, risks, new com.elma.gohan.domain.recommendation.UserPreference(
@@ -147,7 +142,8 @@ public class RecommendationService {
             riskResultRepository.save(new RiskResultEntity(
                     UUID.randomUUID(), saved.id(), candidate.risk().riskScore(),
                     candidate.risk().riskLevel().name(), candidate.risk().confidence(),
-                    toJson(candidate.risk().factors()), toJson(candidate.risk().reasons()),
+                    toJson(candidate.risk().factors()), evidenceJson(candidate.risk()),
+                    toJson(candidate.risk().reasons()),
                     candidate.risk().algorithmVersion(), now));
             persisted.add(new RestaurantCandidate(
                     saved, candidate.risk(), candidate.lowRegretScore(), candidate.reasons()));
@@ -174,6 +170,7 @@ public class RecommendationService {
                     candidate.restaurant().distanceMeters(),
                     candidate.risk().riskScore(), candidate.risk().riskLevel().name(),
                     candidate.risk().confidence(), toJson(candidate.risk().factors()),
+                    evidenceJson(candidate.risk()),
                     toJson(candidate.risk().reasons()), candidate.risk().algorithmVersion(),
                     candidate.lowRegretScore(), toJson(candidate.reasons()), i == 0));
         }
@@ -243,12 +240,12 @@ public class RecommendationService {
                 .orElseGet(() -> new RestaurantEntity(UUID.randomUUID(), r.source(), r.sourcePoiId(),
                         r.name(), r.latitude(), r.longitude(), r.categoryCode(), r.categoryLabel(),
                         r.rating(), r.reviewCount(), r.averagePrice(), r.businessStatus(),
-                        r.openingHours(), r.address(), r.dataCompleteness(), now, now));
+                        r.openingHours(), r.address(), r.telephone(), r.dataCompleteness(), now, now));
         RestaurantEntity updated = new RestaurantEntity(
                 entity.getId(), entity.getSource(), entity.getSourcePoiId(),
                 r.name(), r.latitude(), r.longitude(), r.categoryCode(), r.categoryLabel(),
                 r.rating(), r.reviewCount(), r.averagePrice(), r.businessStatus(),
-                r.openingHours(), r.address(), r.dataCompleteness(),
+                r.openingHours(), r.address(), r.telephone(), r.dataCompleteness(),
                 entity.getCreatedAt(), now);
         return toDomain(restaurantRepository.save(updated), r.distanceMeters());
     }
@@ -257,7 +254,7 @@ public class RecommendationService {
         return new Restaurant(e.getId(), e.getSource(), e.getSourcePoiId(), e.getName(),
                 e.getLatitude(), e.getLongitude(), distanceMeters, e.getCategoryCode(),
                 e.getCategoryLabel(), e.getRating(), e.getReviewCount(), e.getAveragePrice(),
-                e.getBusinessStatus(), e.getOpeningHours(), e.getAddress(),
+                e.getBusinessStatus(), e.getOpeningHours(), e.getAddress(), e.getTelephone(),
                 e.getDataCompleteness() == null ? DataCompleteness.MINIMAL : e.getDataCompleteness());
     }
 
@@ -268,7 +265,8 @@ public class RecommendationService {
         Restaurant restaurant = toDomain(e, c.getDistanceMeters());
         RiskResult risk = new RiskResult(c.getRiskScore(), RiskLevel.valueOf(c.getRiskLevel()),
                 c.getRiskConfidence(), fromFactorsJson(c.getRiskFactorsJson()),
-                fromJson(c.getRiskReasonsJson()), c.getRiskAlgorithmVersion());
+                fromJson(c.getRiskReasonsJson()), c.getRiskAlgorithmVersion(),
+                fromEvidenceSummaryJson(c.getEvidenceSummaryJson()));
         return new RestaurantCandidate(restaurant, risk, c.getLowRegretScore(),
                 fromJson(c.getReasonsJson()));
     }
@@ -288,6 +286,7 @@ public class RecommendationService {
                 new RiskAssessment(candidate.risk().riskScore(), candidate.risk().riskLevel().name(),
                         candidate.risk().confidence(),
                         candidate.risk().reasons(), candidate.risk().algorithmVersion()),
+                EvidenceSummaryResponse.from(candidate.risk().evidenceSummary()),
                 candidate.reasons(),
                 Math.min(MAX_ALTERNATIVES, Math.max(0, alternativesRemaining)));
     }
@@ -316,13 +315,16 @@ public class RecommendationService {
         }
     }
 
-    private RestaurantEvidence safeEvidence(Restaurant restaurant) {
+    private String evidenceJson(RiskResult risk) {
+        return risk.evidenceSummary() == null ? "{}" : toJson(risk.evidenceSummary());
+    }
+
+    private EvidenceSummary fromEvidenceSummaryJson(String json) {
+        if (json == null || json.isBlank() || "{}".equals(json)) return null;
         try {
-            RestaurantEvidence evidence = evidenceProvider.getEvidence(restaurant);
-            return evidence == null ? RestaurantEvidence.unavailable("UNKNOWN") : evidence;
-        } catch (RuntimeException exception) {
-            log.warn("EvidenceProvider 获取失败，餐厅 {} 已降级", restaurant.sourcePoiId(), exception);
-            return RestaurantEvidence.unavailable("PROVIDER");
+            return objectMapper.readValue(json, EvidenceSummary.class);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Evidence 摘要反序列化失败", e);
         }
     }
 }

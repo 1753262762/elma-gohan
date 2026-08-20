@@ -8,7 +8,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "elma.recommendation")
 public class RecommendationProperties {
 
-    private String algorithmVersion = "recommendation-v0.2";
+    private String algorithmVersion = "recommendation-v0.3";
     private int topK = 10;
     /** 会话候选池大小:首次推荐 + 最多 5 次重新选择。 */
     private int poolSize = 6;
