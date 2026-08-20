@@ -39,7 +39,7 @@ class BaiduPlaceApiProviderTest {
     void mapsStringNumbersAndUsesGcj02BatchParameters() {
         BaiduPlaceApiProvider provider = new BaiduPlaceApiProvider(properties());
 
-        PlatformSearchResult v3 = provider.searchV3(new Location(28.2291, 112.9412), 1200);
+        PlatformSearchResult v3 = provider.searchV3(new Location(28.2291, 112.9412), 1200, 1);
         PlatformSearchResult v2 = provider.searchV2(new Location(28.2291, 112.9412), 1200);
 
         assertThat(requests).hasSize(2);
@@ -51,8 +51,11 @@ class BaiduPlaceApiProviderTest {
                 .contains("scope=2")
                 .contains("radius_limit=true")
                 .contains("page_size=20")
-                .contains("page_num=0");
+                .contains("page_num=1");
         assertThat(v3.status()).isEqualTo(EvidenceStatus.AVAILABLE);
+        assertThat(v3.total()).isEqualTo(2);
+        assertThat(v3.pageNumber()).isEqualTo(1);
+        assertThat(v3.pageSize()).isEqualTo(20);
         assertThat(v2.status()).isEqualTo(EvidenceStatus.AVAILABLE);
         PlatformEvidence evidence = v3.evidence().get(0);
         assertThat(evidence.overallRating()).isEqualTo(4.2);
@@ -68,13 +71,13 @@ class BaiduPlaceApiProviderTest {
         responseBody = "{\"status\":2,\"message\":\"invalid request\"}";
         BaiduPlaceApiProvider provider = new BaiduPlaceApiProvider(properties());
 
-        assertThat(provider.searchV3(new Location(28.2, 112.9), 1000).status())
+        assertThat(provider.searchV3(new Location(28.2, 112.9), 1000, 0).status())
                 .isEqualTo(EvidenceStatus.UNAVAILABLE);
 
         BaiduProperties disabled = properties();
         disabled.setAk("");
         assertThat(new BaiduPlaceApiProvider(disabled)
-                .searchV3(new Location(28.2, 112.9), 1000).status())
+                .searchV3(new Location(28.2, 112.9), 1000, 0).status())
                 .isEqualTo(EvidenceStatus.UNAVAILABLE);
         assertThat(requests).hasSize(1);
     }
@@ -99,7 +102,7 @@ class BaiduPlaceApiProviderTest {
 
     private static String successBody() {
         return """
-                {"status":0,"results":[{
+                {"status":0,"total":2,"results":[{
                   "uid":"baidu-1","name":"湘味小馆","address":"麓山南路1号",
                   "location":{"lat":"28.2291","lng":"112.9412"},
                   "telephone":"0731-12345678",

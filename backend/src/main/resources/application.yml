@@ -56,6 +56,8 @@ elma:
     ambiguity-margin: 0.08
     minimum-name-similarity: 0.45
     maximum-distance-meters: 300
+    sparse-match-minimum-name-similarity: 0.70
+    sparse-match-maximum-distance-meters: 100
     matched-ttl-days: 30
     ambiguous-ttl-hours: 6
     no-match-ttl-minutes: 30

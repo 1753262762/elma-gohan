@@ -48,9 +48,13 @@ public class EntityResolver {
         Map<String, EntityMatchResult> result = new LinkedHashMap<>();
         for (Restaurant restaurant : restaurants) {
             List<ScoredCandidate> scores = candidates.get(restaurant.sourcePoiId());
-            if (scores == null || scores.isEmpty()
-                    || scores.get(0).score() < properties.getAcceptThreshold()) {
+            if (scores == null || scores.isEmpty()) {
                 result.put(restaurant.sourcePoiId(), EntityMatchResult.noMatch());
+                continue;
+            }
+            if (scores.get(0).score() < properties.getAcceptThreshold()) {
+                result.put(restaurant.sourcePoiId(),
+                        EntityMatchResult.noMatch(scores.get(0).features()));
                 continue;
             }
             ScoredCandidate best = scores.get(0);
@@ -70,7 +74,8 @@ public class EntityResolver {
         for (PrimaryCandidate primary : accepted) {
             ScoredCandidate candidate = primary.candidate();
             if (!used.add(candidate.evidence().providerPoiId())) {
-                result.put(primary.primaryPoiId(), EntityMatchResult.noMatch());
+                result.put(primary.primaryPoiId(),
+                        EntityMatchResult.noMatch(candidate.features()));
                 continue;
             }
             result.put(primary.primaryPoiId(), new EntityMatchResult(EntityMatchStatus.MATCHED,
@@ -80,21 +85,49 @@ public class EntityResolver {
     }
 
     private ScoredCandidate score(Restaurant restaurant, PlatformEvidence evidence) {
-        double name = jaccardBigrams(normalizeName(restaurant.name()), normalizeName(evidence.name()));
-        double address = jaccardBigrams(normalizeText(restaurant.address()),
-                normalizeText(evidence.address()));
+        String restaurantName = normalizeName(restaurant.name());
+        String evidenceName = normalizeName(evidence.name());
+        String restaurantAddress = normalizeText(restaurant.address());
+        String evidenceAddress = normalizeText(evidence.address());
+        double name = jaccardBigrams(restaurantName, evidenceName);
+        double address = jaccardBigrams(restaurantAddress, evidenceAddress);
         double distance = haversineMeters(restaurant.latitude(), restaurant.longitude(),
                 evidence.latitude(), evidence.longitude());
-        boolean telephoneExact = telephoneMatches(restaurant.telephone(), evidence.telephone());
+        Set<String> restaurantTelephones = telephones(restaurant.telephone());
+        Set<String> evidenceTelephones = telephones(evidence.telephone());
+        boolean telephoneComparable = !restaurantTelephones.isEmpty()
+                && !evidenceTelephones.isEmpty();
+        boolean telephoneExact = telephoneComparable
+                && restaurantTelephones.stream().anyMatch(evidenceTelephones::contains);
         if (distance > properties.getMaximumDistanceMeters() && !telephoneExact) return null;
         if (name < properties.getMinimumNameSimilarity() && !telephoneExact) return null;
 
+        boolean addressComparable = !restaurantAddress.isBlank() && !evidenceAddress.isBlank();
+        boolean coordinateComparable = evidence.latitude() != null && evidence.longitude() != null;
+        boolean sparseEvidence = !addressComparable || !telephoneComparable;
+        if (sparseEvidence && !telephoneExact
+                && (name < properties.getSparseMatchMinimumNameSimilarity()
+                || distance > properties.getSparseMatchMaximumDistanceMeters())) {
+            return null;
+        }
+
         double coordinate = coordinateSimilarity(distance);
         double telephone = telephoneExact ? 1.0 : 0.0;
-        double score = name * properties.getNameWeight()
-                + coordinate * properties.getCoordinateWeight()
-                + address * properties.getAddressWeight()
-                + telephone * properties.getTelephoneWeight();
+        double weightedScore = name * properties.getNameWeight();
+        double availableWeight = properties.getNameWeight();
+        if (coordinateComparable) {
+            weightedScore += coordinate * properties.getCoordinateWeight();
+            availableWeight += properties.getCoordinateWeight();
+        }
+        if (addressComparable) {
+            weightedScore += address * properties.getAddressWeight();
+            availableWeight += properties.getAddressWeight();
+        }
+        if (telephoneComparable) {
+            weightedScore += telephone * properties.getTelephoneWeight();
+            availableWeight += properties.getTelephoneWeight();
+        }
+        double score = availableWeight == 0.0 ? 0.0 : weightedScore / availableWeight;
         if (telephoneExact && name >= 0.7) score = Math.max(score, 0.85);
         Map<String, Double> features = new LinkedHashMap<>();
         features.put("name", round(name));
@@ -102,6 +135,8 @@ public class EntityResolver {
         features.put("address", round(address));
         features.put("telephone", telephone);
         features.put("distanceMeters", round(distance));
+        features.put("availableWeight", round(availableWeight));
+        features.put("weightedScore", round(weightedScore));
         return new ScoredCandidate(evidence, Math.min(1.0, score), features);
     }
 
@@ -121,12 +156,6 @@ public class EntityResolver {
         String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC)
                 .toLowerCase(Locale.ROOT);
         return NON_TEXT.matcher(normalized).replaceAll("");
-    }
-
-    private static boolean telephoneMatches(String first, String second) {
-        Set<String> left = telephones(first);
-        Set<String> right = telephones(second);
-        return !left.isEmpty() && left.stream().anyMatch(right::contains);
     }
 
     private static Set<String> telephones(String value) {

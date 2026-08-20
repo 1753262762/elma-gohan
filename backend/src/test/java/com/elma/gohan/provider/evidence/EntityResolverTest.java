@@ -31,6 +31,56 @@ class EntityResolverTest {
     }
 
     @Test
+    void renormalizesWeightsWhenAddressAndTelephoneAreUnavailable() {
+        Restaurant restaurant = new Restaurant(null, "AMAP", "a1", "湘味小馆",
+                28.2291, 112.9412, 50, "CHINESE", "中餐厅", 4.6, 100, 45,
+                BusinessStatus.UNKNOWN, "09:00-21:00", null, null,
+                DataCompleteness.PARTIAL);
+        PlatformEvidence baidu = evidence("b1", "湘味小馆", null,
+                28.2292, 112.9412, null);
+
+        EntityMatchResult result = resolver.resolve(List.of(restaurant), List.of(baidu), Set.of())
+                .get("a1");
+
+        assertThat(result.status()).isEqualTo(EntityMatchStatus.MATCHED);
+        assertThat(result.confidence()).isGreaterThanOrEqualTo(0.78);
+        assertThat(result.features()).containsEntry("availableWeight", 0.75);
+    }
+
+    @Test
+    void sparseEvidenceStillRequiresNearbyCoordinates() {
+        Restaurant restaurant = new Restaurant(null, "AMAP", "a1", "湘味小馆",
+                28.2291, 112.9412, 50, "CHINESE", "中餐厅", 4.6, 100, 45,
+                BusinessStatus.UNKNOWN, "09:00-21:00", null, null,
+                DataCompleteness.PARTIAL);
+        PlatformEvidence baidu = evidence("b1", "湘味小馆", null,
+                28.23045, 112.9412, null);
+
+        EntityMatchResult result = resolver.resolve(List.of(restaurant), List.of(baidu), Set.of())
+                .get("a1");
+
+        assertThat(result.status()).isEqualTo(EntityMatchStatus.NO_MATCH);
+    }
+
+    @Test
+    void rejectedBestCandidateKeepsDiagnosticFeatures() {
+        Restaurant restaurant = new Restaurant(null, "AMAP", "a1", "湘味小馆",
+                28.2291, 112.9412, 50, "CHINESE", "中餐厅", 4.6, 100, 45,
+                BusinessStatus.UNKNOWN, "09:00-21:00", "麓山南路 1 号",
+                "0731-12345678", DataCompleteness.FULL);
+        PlatformEvidence baidu = evidence("b1", "湘味小馆", "完全不同的地址",
+                28.2310, 112.9412, "0731-87654321");
+
+        EntityMatchResult result = resolver.resolve(List.of(restaurant), List.of(baidu), Set.of())
+                .get("a1");
+
+        assertThat(result.status()).isEqualTo(EntityMatchStatus.NO_MATCH);
+        assertThat(result.confidence()).isNull();
+        assertThat(result.features()).containsKeys("name", "coordinate", "address",
+                "telephone", "distanceMeters", "availableWeight", "weightedScore");
+    }
+
+    @Test
     void closeDuplicateCandidatesAreMarkedAmbiguous() {
         Restaurant restaurant = TestRestaurants.full("a1", "湘味小馆", 4.6, 50, 45);
         PlatformEvidence first = evidence("b1", "湘味小馆", "麓山南路 1 号",

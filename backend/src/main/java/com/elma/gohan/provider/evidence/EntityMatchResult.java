@@ -20,4 +20,8 @@ public record EntityMatchResult(
     public static EntityMatchResult noMatch() {
         return new EntityMatchResult(EntityMatchStatus.NO_MATCH, null, null, Map.of());
     }
+
+    public static EntityMatchResult noMatch(Map<String, Double> features) {
+        return new EntityMatchResult(EntityMatchStatus.NO_MATCH, null, null, features);
+    }
 }

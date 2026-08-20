@@ -37,21 +37,23 @@ public class BaiduPlaceApiProvider implements PlatformEvidenceProvider {
     }
 
     @Override
-    public PlatformSearchResult searchV3(Location center, int radiusMeters) {
-        return search("V3", "/place/v3/around", center, radiusMeters);
+    public PlatformSearchResult searchV3(Location center, int radiusMeters, int pageNumber) {
+        return search("V3", "/place/v3/around", center, radiusMeters, pageNumber);
     }
 
     @Override
     public PlatformSearchResult searchV2(Location center, int radiusMeters) {
-        return search("V2", "/place/v2/search", center, radiusMeters);
+        return search("V2", "/place/v2/search", center, radiusMeters, 0);
     }
 
     private PlatformSearchResult search(String apiVersion, String path, Location center,
-                                        int radiusMeters) {
+                                        int radiusMeters, int pageNumber) {
         if (!properties.isEnabled() || properties.getAk().isBlank()) {
             return PlatformSearchResult.unavailable();
         }
         long started = System.nanoTime();
+        int safePageNumber = Math.max(0, pageNumber);
+        int pageSize = Math.min(20, Math.max(10, properties.getPageSize()));
         try {
             JsonNode body = restClient.get().uri(uriBuilder -> uriBuilder.path(path)
                     .queryParam("query", properties.getQuery())
@@ -61,25 +63,27 @@ public class BaiduPlaceApiProvider implements PlatformEvidenceProvider {
                     .queryParam("scope", 2)
                     .queryParam("coord_type", 2)
                     .queryParam("ret_coordtype", "gcj02ll")
-                    .queryParam("page_size", Math.min(20, Math.max(10, properties.getPageSize())))
-                    .queryParam("page_num", 0)
+                    .queryParam("page_size", pageSize)
+                    .queryParam("page_num", safePageNumber)
                     .queryParam("output", "json")
                     .queryParam("ak", properties.getAk())
                     .build()).retrieve().body(JsonNode.class);
             if (body == null || body.path("status").asInt(-1) != 0) {
                 int status = body == null ? -1 : body.path("status").asInt(-1);
-                log.warn("百度 Place {} 返回失败状态 status={} durationMs={}", apiVersion,
-                        status, elapsedMillis(started));
+                log.warn("百度 Place {} 返回失败状态 page={} status={} durationMs={}", apiVersion,
+                        safePageNumber, status, elapsedMillis(started));
                 return PlatformSearchResult.unavailable();
             }
             List<PlatformEvidence> evidence = mapResults(body.path("results"), Instant.now());
-            log.info("百度 Place {} 完成 resultCount={} durationMs={}", apiVersion,
-                    evidence.size(), elapsedMillis(started));
+            Integer total = integer(body, "total");
+            log.info("百度 Place {} 完成 page={} resultCount={} total={} durationMs={}",
+                    apiVersion, safePageNumber, evidence.size(), total, elapsedMillis(started));
             return new PlatformSearchResult(evidence.isEmpty()
-                    ? EvidenceStatus.NO_DATA : EvidenceStatus.AVAILABLE, evidence);
+                    ? EvidenceStatus.NO_DATA : EvidenceStatus.AVAILABLE, evidence,
+                    total, safePageNumber, pageSize);
         } catch (RestClientException exception) {
-            log.warn("百度 Place {} 请求失败 durationMs={} errorType={}", apiVersion,
-                    elapsedMillis(started), exception.getClass().getSimpleName());
+            log.warn("百度 Place {} 请求失败 page={} durationMs={} errorType={}", apiVersion,
+                    safePageNumber, elapsedMillis(started), exception.getClass().getSimpleName());
             return PlatformSearchResult.unavailable();
         }
     }

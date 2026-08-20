@@ -36,7 +36,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
- * 推荐级 Evidence 编排：一次批量百度召回、本地实体匹配、可选一次 V2 补充和缓存。
+ * 推荐级 Evidence 编排：最多两次百度调用，自适应选择 V3 第二页或 V2 细评分。
  */
 @Service
 public class EvidenceAggregator {
@@ -99,15 +99,38 @@ public class EvidenceAggregator {
         }
 
         PlatformSearchResult v3Result = null;
+        boolean secondCallUsed = false;
+        boolean completeV3Recall = true;
+        int baiduCallCount = 0;
+        List<Integer> v3PagesRequested = new ArrayList<>();
         if (!unresolved.isEmpty()) {
-            v3Result = safeSearchV3(center, radiusMeters);
+            baiduCallCount++;
+            v3PagesRequested.add(0);
+            PlatformSearchResult firstPage = safeSearchV3(center, radiusMeters, 0);
+            v3Result = firstPage;
             if (v3Result.status() == EvidenceStatus.UNAVAILABLE) {
                 for (Restaurant restaurant : unresolved) {
                     matches.put(restaurant.sourcePoiId(), EntityMatchResult.unavailable());
                 }
             } else {
-                matches.putAll(entityResolver.resolve(unresolved, v3Result.evidence(),
-                        reservedProviderIds));
+                Map<String, EntityMatchResult> firstPageMatches = entityResolver.resolve(
+                        unresolved, firstPage.evidence(), reservedProviderIds);
+                if (shouldFetchSecondV3Page(firstPage, firstPageMatches)) {
+                    secondCallUsed = true;
+                    baiduCallCount++;
+                    v3PagesRequested.add(1);
+                    PlatformSearchResult secondPage = safeSearchV3(center, radiusMeters, 1);
+                    if (secondPage.status() == EvidenceStatus.UNAVAILABLE) {
+                        completeV3Recall = false;
+                        matches.putAll(firstPageMatches);
+                    } else {
+                        v3Result = mergeV3Pages(firstPage, secondPage);
+                        matches.putAll(entityResolver.resolve(unresolved, v3Result.evidence(),
+                                reservedProviderIds));
+                    }
+                } else {
+                    matches.putAll(firstPageMatches);
+                }
                 for (Restaurant restaurant : unresolved) {
                     String primaryPoiId = restaurant.sourcePoiId();
                     matches.computeIfPresent(primaryPoiId, (ignored, match) ->
@@ -120,8 +143,11 @@ public class EvidenceAggregator {
         matches.forEach((primaryPoiId, match) -> {
             if (needsV2(match)) v2RequestedPrimaryIds.add(primaryPoiId);
         });
-        PlatformSearchResult v2Result = !v2RequestedPrimaryIds.isEmpty()
-                ? safeSearchV2(center, radiusMeters) : null;
+        PlatformSearchResult v2Result = null;
+        if (!secondCallUsed && !v2RequestedPrimaryIds.isEmpty()) {
+            baiduCallCount++;
+            v2Result = safeSearchV2(center, radiusMeters);
+        }
         if (v2Result != null && v2Result.status() != EvidenceStatus.UNAVAILABLE) {
             Map<String, PlatformEvidence> byId = new HashMap<>();
             for (PlatformEvidence evidence : v2Result.evidence()) {
@@ -129,11 +155,14 @@ public class EvidenceAggregator {
             }
             matches.replaceAll((primaryPoiId, match) -> enrich(match, byId));
         }
+        log.info("百度 Evidence 编排完成 callCount={} v3Pages={} v2Called={} unresolvedCount={}",
+                baiduCallCount, v3PagesRequested, v2Result != null, unresolved.size());
 
         for (Restaurant restaurant : unresolved) {
             EntityMatchResult match = matches.getOrDefault(restaurant.sourcePoiId(),
                     EntityMatchResult.noMatch());
-            persistMapping(restaurant, match, v3Result, v2Result, stored.get(restaurant.sourcePoiId()), now);
+            persistMapping(restaurant, match, v3Result, v2Result,
+                    stored.get(restaurant.sourcePoiId()), now, completeV3Recall);
         }
         // V2 可能刷新了原本命中的缓存映射。
         if (v2Result != null && v2Result.status() != EvidenceStatus.UNAVAILABLE) {
@@ -141,7 +170,7 @@ public class EvidenceAggregator {
                 if (!unresolved.contains(restaurant)
                         && v2RequestedPrimaryIds.contains(restaurant.sourcePoiId())) {
                     persistMapping(restaurant, matches.get(restaurant.sourcePoiId()), null, v2Result,
-                            stored.get(restaurant.sourcePoiId()), now);
+                            stored.get(restaurant.sourcePoiId()), now, true);
                 }
             }
         }
@@ -206,6 +235,31 @@ public class EvidenceAggregator {
                 || evidence.environmentRating() != null;
     }
 
+    private boolean shouldFetchSecondV3Page(PlatformSearchResult firstPage,
+                                            Map<String, EntityMatchResult> matches) {
+        if (firstPage.status() != EvidenceStatus.AVAILABLE
+                || firstPage.pageSize() <= 0) {
+            return false;
+        }
+        boolean moreResults = firstPage.total() == null
+                ? firstPage.evidence().size() >= firstPage.pageSize()
+                : firstPage.total() > firstPage.pageSize();
+        boolean hasUnmatched = matches.values().stream()
+                .anyMatch(match -> match.status() == EntityMatchStatus.NO_MATCH);
+        return moreResults && hasUnmatched;
+    }
+
+    private PlatformSearchResult mergeV3Pages(PlatformSearchResult firstPage,
+                                               PlatformSearchResult secondPage) {
+        Map<String, PlatformEvidence> deduplicated = new LinkedHashMap<>();
+        firstPage.evidence().forEach(item -> deduplicated.put(item.providerPoiId(), item));
+        secondPage.evidence().forEach(item -> deduplicated.putIfAbsent(item.providerPoiId(), item));
+        return new PlatformSearchResult(deduplicated.isEmpty()
+                ? EvidenceStatus.NO_DATA : EvidenceStatus.AVAILABLE,
+                List.copyOf(deduplicated.values()), firstPage.total(), 0,
+                firstPage.pageSize() + secondPage.pageSize());
+    }
+
     private EntityMatchResult enrich(EntityMatchResult match,
                                      Map<String, PlatformEvidence> v2ById) {
         if (match == null || match.status() != EntityMatchStatus.MATCHED
@@ -236,7 +290,8 @@ public class EvidenceAggregator {
 
     private void persistMapping(Restaurant restaurant, EntityMatchResult match,
                                 PlatformSearchResult v3Result, PlatformSearchResult v2Result,
-                                ExternalEntityMappingEntity existing, LocalDateTime now) {
+                                ExternalEntityMappingEntity existing, LocalDateTime now,
+                                boolean cacheNoMatch) {
         ExternalEntityMappingEntity entity = existing == null
                 ? new ExternalEntityMappingEntity(UUID.randomUUID(), PRIMARY_SOURCE,
                 restaurant.sourcePoiId(), EVIDENCE_SOURCE, now) : existing;
@@ -264,7 +319,8 @@ public class EvidenceAggregator {
         LocalDateTime expiresAt = switch (match.status()) {
             case MATCHED -> now.plusDays(properties.getMatchedTtlDays());
             case AMBIGUOUS -> now.plusHours(properties.getAmbiguousTtlHours());
-            case NO_MATCH -> now.plusMinutes(properties.getNoMatchTtlMinutes());
+            case NO_MATCH -> cacheNoMatch
+                    ? now.plusMinutes(properties.getNoMatchTtlMinutes()) : now;
             // 瞬时平台故障不做负缓存，下次新推荐可以立即恢复。
             case UNAVAILABLE -> now;
         };
@@ -292,13 +348,13 @@ public class EvidenceAggregator {
         }
     }
 
-    private PlatformSearchResult safeSearchV3(Location center, int radiusMeters) {
+    private PlatformSearchResult safeSearchV3(Location center, int radiusMeters, int pageNumber) {
         try {
-            PlatformSearchResult result = baiduProvider.searchV3(center, radiusMeters);
+            PlatformSearchResult result = baiduProvider.searchV3(center, radiusMeters, pageNumber);
             return result == null ? PlatformSearchResult.unavailable() : result;
         } catch (RuntimeException exception) {
-            log.warn("百度 V3 Evidence 获取失败，已按高德数据继续推荐 errorType={}",
-                    exception.getClass().getSimpleName());
+            log.warn("百度 V3 Evidence 获取失败 page={}，已按高德数据继续推荐 errorType={}",
+                    pageNumber, exception.getClass().getSimpleName());
             return PlatformSearchResult.unavailable();
         }
     }

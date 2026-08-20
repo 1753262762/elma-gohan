@@ -13,6 +13,8 @@ public class EntityResolutionProperties {
     private double ambiguityMargin = 0.08;
     private double minimumNameSimilarity = 0.45;
     private int maximumDistanceMeters = 300;
+    private double sparseMatchMinimumNameSimilarity = 0.70;
+    private int sparseMatchMaximumDistanceMeters = 100;
     private int matchedTtlDays = 30;
     private int ambiguousTtlHours = 6;
     private int noMatchTtlMinutes = 30;
@@ -35,6 +37,18 @@ public class EntityResolutionProperties {
     public void setMinimumNameSimilarity(double value) { minimumNameSimilarity = value; }
     public int getMaximumDistanceMeters() { return maximumDistanceMeters; }
     public void setMaximumDistanceMeters(int value) { maximumDistanceMeters = value; }
+    public double getSparseMatchMinimumNameSimilarity() {
+        return sparseMatchMinimumNameSimilarity;
+    }
+    public void setSparseMatchMinimumNameSimilarity(double value) {
+        sparseMatchMinimumNameSimilarity = value;
+    }
+    public int getSparseMatchMaximumDistanceMeters() {
+        return sparseMatchMaximumDistanceMeters;
+    }
+    public void setSparseMatchMaximumDistanceMeters(int value) {
+        sparseMatchMaximumDistanceMeters = value;
+    }
     public int getMatchedTtlDays() { return matchedTtlDays; }
     public void setMatchedTtlDays(int value) { matchedTtlDays = value; }
     public int getAmbiguousTtlHours() { return ambiguousTtlHours; }
