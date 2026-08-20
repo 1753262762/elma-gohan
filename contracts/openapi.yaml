@@ -1,16 +1,16 @@
 openapi: 3.0.3
 info:
   title: ELMA 家今天的饭 API
-  version: 0.3.0
+  version: 0.3.1
   description: |
     V0.3 测试版的前后端接口契约。服务端负责高德 POI、百度 Evidence、实体匹配、跨平台一致性、风险过滤、TasteProfile、
-    Low Regret 排序、多样化重排和候选池管理；客户端不得自行重算风险或排序。
+    Low Regret 排序、多样化重排、候选池管理与按需公开 Web Evidence 深挖；客户端不得自行重算风险或排序。
 servers:
   - url: /api/v1
     description: 当前服务
 tags:
   - name: Recommendations
-    description: 推荐、换一家与反馈闭环
+    description: 推荐、换一家、反馈与按需深挖闭环
 
 paths:
   /recommendations:
@@ -108,6 +108,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FeedbackResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/RecommendationNotFound'
+
+  /recommendations/{id}/deep-evidence:
+    post:
+      tags: [Recommendations]
+      operationId: deepenRecommendationEvidence
+      summary: 按需深挖当前餐厅
+      description: |
+        对推荐会话当前展示餐厅查询缓存或公开 Web Search Evidence，并返回独立的深挖风险结论。
+        该结论不覆盖推荐会话冻结的基础风险，也不改变候选池、reroll 或 TasteProfile。
+      parameters:
+        - $ref: '#/components/parameters/RecommendationId'
+        - $ref: '#/components/parameters/AnonymousUserId'
+      responses:
+        '200':
+          description: 深挖完成；外部来源失败时仍返回基础判断和来源状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeepEvidenceResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -482,6 +505,131 @@ components:
           type: integer
           nullable: true
           minimum: 0
+
+    DeepEvidenceResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - recommendationId
+        - restaurantId
+        - restaurantName
+        - baseRisk
+        - deepRisk
+        - sourceCoverage
+        - signals
+        - consistency
+        - links
+        - cacheStatus
+        - generatedAt
+        - expiresAt
+      properties:
+        recommendationId:
+          type: string
+          format: uuid
+        restaurantId:
+          type: string
+          format: uuid
+        restaurantName:
+          type: string
+          maxLength: 120
+        baseRisk:
+          $ref: '#/components/schemas/RiskAssessment'
+        deepRisk:
+          $ref: '#/components/schemas/RiskAssessment'
+        structuredEvidence:
+          allOf:
+            - $ref: '#/components/schemas/EvidenceSummary'
+          nullable: true
+        sourceCoverage:
+          type: array
+          minItems: 5
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/DeepSourceCoverage'
+        signals:
+          $ref: '#/components/schemas/DeepSignalSummary'
+        consistency:
+          $ref: '#/components/schemas/DeepConsistency'
+        links:
+          type: array
+          maxItems: 9
+          items:
+            $ref: '#/components/schemas/DeepEvidenceLink'
+        cacheStatus:
+          type: string
+          enum: [HIT, PARTIAL_HIT, MISS]
+        generatedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+
+    DeepSourceCoverage:
+      type: object
+      additionalProperties: false
+      required: [source, status, resultCount]
+      properties:
+        source:
+          type: string
+          enum: [AMAP, BAIDU, BILIBILI, XIAOHONGSHU, DIANPING]
+        status:
+          type: string
+          enum: [AVAILABLE, NO_DATA, UNAVAILABLE]
+        resultCount:
+          type: integer
+          nullable: true
+          minimum: 0
+
+    DeepSignalSummary:
+      type: object
+      additionalProperties: false
+      required: [positive, negative, cautions]
+      properties:
+        positive:
+          type: array
+          maxItems: 3
+          items: { type: string, maxLength: 120 }
+        negative:
+          type: array
+          maxItems: 3
+          items: { type: string, maxLength: 120 }
+        cautions:
+          type: array
+          maxItems: 2
+          items: { type: string, maxLength: 120 }
+
+    DeepConsistency:
+      type: object
+      additionalProperties: false
+      required: [level, reason]
+      properties:
+        level:
+          type: string
+          enum: [HIGH, MEDIUM, LOW, UNKNOWN]
+        reason:
+          type: string
+          maxLength: 160
+
+    DeepEvidenceLink:
+      type: object
+      additionalProperties: false
+      required: [source, title, url]
+      properties:
+        source:
+          type: string
+          enum: [BILIBILI, XIAOHONGSHU, DIANPING]
+        title:
+          type: string
+          maxLength: 200
+        url:
+          type: string
+          format: uri
+          maxLength: 1000
+        publishedAt:
+          type: string
+          format: date-time
+          nullable: true
 
     SubmitFeedbackRequest:
       type: object

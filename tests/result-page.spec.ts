@@ -53,6 +53,7 @@ describe('result page acceptance states', () => {
   beforeEach(() => {
     vi.stubGlobal('uni', {
       reLaunch: vi.fn(),
+      navigateTo: vi.fn(),
       showToast: vi.fn(),
     })
   })
@@ -108,6 +109,17 @@ describe('result page acceptance states', () => {
     expect(wrapper.text()).toContain('已匹配同一门店')
     expect(wrapper.text()).toContain('口味 4.0 · 服务 4.1')
     expect(wrapper.text()).toContain('高德评分比百度高 0.7 分')
+  })
+
+  it('opens the independent deep-evidence page for the frozen restaurant', async () => {
+    recommendationStore.setCurrent(recommendation(), request)
+    const wrapper = mount(ResultPage)
+
+    await wrapper.find('.deep-evidence-button').trigger('click')
+
+    expect(uni.navigateTo).toHaveBeenCalledWith({
+      url: '/pages/deep-evidence/index?recommendationId=3c34f61d-cb41-4850-aafe-1505f3312f06&restaurantId=restaurant-a',
+    })
   })
 
   it('shows reroll loading and replaces the view only with the server response', async () => {

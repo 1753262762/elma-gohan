@@ -1,8 +1,10 @@
 package com.elma.gohan.controller;
 
 import com.elma.gohan.application.RecommendationService;
+import com.elma.gohan.application.DeepEvidenceService;
 import com.elma.gohan.application.ValidationFailedException;
 import com.elma.gohan.controller.api.CreateRecommendationRequest;
+import com.elma.gohan.controller.api.DeepEvidenceResponse;
 import com.elma.gohan.controller.api.FeedbackResponse;
 import com.elma.gohan.controller.api.RecommendationResponse;
 import com.elma.gohan.controller.api.SubmitFeedbackRequest;
@@ -18,21 +20,19 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 三个接口严格按 contracts/openapi.yaml 的路径、请求头与响应码实现。
- *
- * 契约疑点(已向负责人标记,未擅改契约):契约把 reroll/feedback 的路径写成字面量
- * /recommendations/glm-5.3_common/...,但同一操作又声明了 in:path、format:uuid 的
- * 推荐会话 id 参数,两者矛盾(字面量路径无法寻址会话)。此处按声明的 path 参数实现为
- * {id};待契约修正为 /recommendations/{id}/reroll 后端无需再改。
+ * 四个接口严格按 contracts/openapi.yaml 的路径、请求头与响应码实现。
  */
 @RestController
 @RequestMapping("/api/v1")
 public class RecommendationController {
 
     private final RecommendationService service;
+    private final DeepEvidenceService deepEvidenceService;
 
-    public RecommendationController(RecommendationService service) {
+    public RecommendationController(RecommendationService service,
+                                    DeepEvidenceService deepEvidenceService) {
         this.service = service;
+        this.deepEvidenceService = deepEvidenceService;
     }
 
     @PostMapping("/recommendations")
@@ -60,6 +60,14 @@ public class RecommendationController {
         UUID anonymousUserId = parseUserId(anonymousUserIdHeader);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(service.submitFeedback(anonymousUserId, parseRecommendationId(id), request));
+    }
+
+    @PostMapping("/recommendations/{id}/deep-evidence")
+    public DeepEvidenceResponse deepEvidence(
+            @RequestHeader("X-Anonymous-User-Id") String anonymousUserIdHeader,
+            @PathVariable("id") String id) {
+        UUID anonymousUserId = parseUserId(anonymousUserIdHeader);
+        return deepEvidenceService.deepen(anonymousUserId, parseRecommendationId(id));
     }
 
     private UUID parseUserId(String header) {

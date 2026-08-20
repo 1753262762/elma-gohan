@@ -1,6 +1,6 @@
 # ELMA API 契约说明
 
-V0.3.0 的机器可读接口事实源是 [`openapi.yaml`](./openapi.yaml)。本文只解释已确定的跨端规则，不定义第二套 DTO。
+V0.3.1 的机器可读接口事实源是 [`openapi.yaml`](./openapi.yaml)。本文只解释已确定的跨端规则，不定义第二套 DTO。
 
 ## 接口范围
 
@@ -9,8 +9,9 @@ V0.3.0 的机器可读接口事实源是 [`openapi.yaml`](./openapi.yaml)。本�
 | 推荐一家 | `POST /api/v1/recommendations` | `CreateRecommendationRequest` | `201 RecommendationResponse` |
 | 换一家 | `POST /api/v1/recommendations/{id}/reroll` | 无请求体 | `200 RecommendationResponse` |
 | 用户反馈 | `POST /api/v1/recommendations/{id}/feedback` | `SubmitFeedbackRequest` | `201 FeedbackResponse` |
+| 按需深挖 | `POST /api/v1/recommendations/{id}/deep-evidence` | 无请求体 | `200 DeepEvidenceResponse` |
 
-三个接口都要求 `X-Anonymous-User-Id` 请求头，值为客户端首次启动生成并持久化的 UUID。`id` 是推荐会话 ID，不是餐厅 ID。
+四个接口都要求 `X-Anonymous-User-Id` 请求头，值为客户端首次启动生成并持久化的 UUID。`id` 是推荐会话 ID，不是餐厅 ID。深挖只允许操作该用户当前展示的餐厅。
 
 ## 已确定规则
 
@@ -48,6 +49,12 @@ V0.3.0 的机器可读接口事实源是 [`openapi.yaml`](./openapi.yaml)。本�
 
 - 请求只有 `result`。
 - 响应返回反馈 ID、推荐会话 ID、实际餐厅 ID、反馈值和记录时间。
+
+### DeepEvidenceResponse
+
+- `baseRisk` 来自推荐会话冻结快照；`deepRisk` 使用 `deep-risk-v0.1`，最多在基础风险上调整 ±10 分。
+- `sourceCoverage` 展示高德、百度及三个公开搜索来源的真实状态；`links` 每站最多 3 条，不返回摘要全文。
+- Web 公开线索只用于辅助判断，不改变候选排序、reroll、反馈或 TasteProfile。
 
 ### ErrorResponse
 

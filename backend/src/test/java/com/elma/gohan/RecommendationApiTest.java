@@ -8,7 +8,10 @@ import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.AfterAll;
@@ -32,7 +35,12 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Import;
 import com.elma.gohan.provider.evidence.EvidenceProvider;
+import com.elma.gohan.provider.evidence.EvidenceStatus;
 import com.elma.gohan.provider.evidence.RestaurantEvidence;
+import com.elma.gohan.provider.deep.DeepEvidenceBatch;
+import com.elma.gohan.provider.deep.DeepEvidenceProvider;
+import com.elma.gohan.provider.deep.DeepEvidenceSource;
+import com.elma.gohan.provider.deep.WebEvidenceItem;
 
 /**
  * 接口集成测试:连本机 elma_test 库,用本地 HTTP stub 替代高德(不依赖真实 Key)。
@@ -56,6 +64,9 @@ class RecommendationApiTest {
     private static final HttpServer amapStub;
     private static final AtomicReference<String> amapResponse = new AtomicReference<>("{}");
     private static final AtomicBoolean evidenceFailure = new AtomicBoolean();
+    private static final AtomicInteger deepEvidenceCalls = new AtomicInteger();
+    private static final AtomicReference<DeepEvidenceSource> deepEvidenceFailure =
+            new AtomicReference<>();
 
     @TestConfiguration
     static class ThrowingEvidenceConfiguration {
@@ -65,6 +76,30 @@ class RecommendationApiTest {
             return restaurant -> {
                 if (evidenceFailure.get()) throw new IllegalStateException("test evidence failure");
                 return RestaurantEvidence.empty();
+            };
+        }
+
+        @Bean
+        @Primary
+        DeepEvidenceProvider controllableDeepEvidenceProvider() {
+            return (source, restaurant) -> {
+                deepEvidenceCalls.incrementAndGet();
+                if (source == deepEvidenceFailure.get()) {
+                    return DeepEvidenceBatch.unavailable(source,
+                            Instant.parse("2026-08-20T08:00:00Z"));
+                }
+                String url = switch (source) {
+                    case BILIBILI -> "https://www.bilibili.com/video/BV1test";
+                    case XIAOHONGSHU -> "https://www.xiaohongshu.com/explore/test";
+                    case DIANPING -> "https://www.dianping.com/shop/test";
+                };
+                Instant now = Instant.parse("2026-08-20T08:00:00Z");
+                WebEvidenceItem item = new WebEvidenceItem(source,
+                        restaurant.name() + "值得推荐", url,
+                        "分量足，性价比不错，高峰期需要排队", now.minusSeconds(3600),
+                        now, 0.96, List.of());
+                return new DeepEvidenceBatch(source, EvidenceStatus.AVAILABLE,
+                        List.of(item), now);
             };
         }
     }
@@ -100,11 +135,15 @@ class RecommendationApiTest {
     @AfterEach
     void cleanDb() {
         evidenceFailure.set(false);
+        deepEvidenceCalls.set(0);
+        deepEvidenceFailure.set(null);
         jdbc.update("DELETE FROM user_preference");
         jdbc.update("DELETE FROM user_feedback");
         jdbc.update("DELETE FROM recommendation_candidate");
         jdbc.update("DELETE FROM recommendation_log");
         jdbc.update("DELETE FROM risk_result");
+        jdbc.update("DELETE FROM restaurant_deep_analysis");
+        jdbc.update("DELETE FROM restaurant_deep_evidence");
         jdbc.update("DELETE FROM external_entity_mapping");
         jdbc.update("DELETE FROM restaurant");
     }
@@ -146,6 +185,7 @@ class RecommendationApiTest {
                         + "AND risk_algorithm_version = 'risk-v0.3' "
                         + "AND recommendation_algorithm_version = 'recommendation-v0.3'", Integer.class);
         assertThat(logs).isEqualTo(1);
+        assertThat(deepEvidenceCalls).hasValue(0);
     }
 
     @Test
@@ -181,6 +221,7 @@ class RecommendationApiTest {
         JsonNode exhausted = reroll(USER, recommendationId);
         assertThat(exhausted.get("restaurant").get("id").asText()).isEqualTo(a);
         assertThat(exhausted.get("alternativesRemaining").asInt()).isEqualTo(0);
+        assertThat(deepEvidenceCalls).hasValue(0);
     }
 
     @Test
@@ -337,6 +378,51 @@ class RecommendationApiTest {
         ResponseEntity<String> response = create(USER,
                 "{\"latitude\": 28.2282, \"longitude\": 112.9388}");
         assertThat(response.getStatusCode().value()).isEqualTo(201);
+    }
+
+    @Test
+    void deepEvidenceIsOwnedCachedAndDoesNotExposeSnippets() throws Exception {
+        JsonNode created = JSON.readTree(create(USER,
+                "{\"latitude\": 28.2282, \"longitude\": 112.9388}").getBody());
+        String recommendationId = created.get("recommendationId").asText();
+        String restaurantId = created.get("restaurant").get("id").asText();
+        String path = "/api/v1/recommendations/" + recommendationId + "/deep-evidence";
+
+        ResponseEntity<String> firstResponse = post(path, USER, null);
+        assertThat(firstResponse.getStatusCode().value()).isEqualTo(200);
+        JsonNode first = JSON.readTree(firstResponse.getBody());
+        assertThat(first.get("restaurantId").asText()).isEqualTo(restaurantId);
+        assertThat(first.get("baseRisk").get("algorithmVersion").asText()).isEqualTo("risk-v0.3");
+        assertThat(first.get("deepRisk").get("algorithmVersion").asText())
+                .isEqualTo("deep-risk-v0.1");
+        assertThat(first.get("sourceCoverage")).hasSize(5);
+        assertThat(first.get("links").size()).isLessThanOrEqualTo(9);
+        assertThat(firstResponse.getBody()).doesNotContain("snippet");
+        assertThat(first.get("cacheStatus").asText()).isEqualTo("MISS");
+        assertThat(deepEvidenceCalls).hasValue(3);
+
+        JsonNode cached = JSON.readTree(post(path, USER, null).getBody());
+        assertThat(cached.get("cacheStatus").asText()).isEqualTo("HIT");
+        assertThat(deepEvidenceCalls).hasValue(3);
+
+        assertThat(post(path, OTHER_USER, null).getStatusCode().value()).isEqualTo(404);
+    }
+
+    @Test
+    void partialDeepEvidenceFailureStillReturnsBaseConclusion() throws Exception {
+        JsonNode created = JSON.readTree(create(USER,
+                "{\"latitude\": 28.2282, \"longitude\": 112.9388}").getBody());
+        deepEvidenceFailure.set(DeepEvidenceSource.XIAOHONGSHU);
+
+        ResponseEntity<String> response = post("/api/v1/recommendations/"
+                + created.get("recommendationId").asText() + "/deep-evidence", USER, null);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        JsonNode body = JSON.readTree(response.getBody());
+        assertThat(body.get("baseRisk")).isNotNull();
+        assertThat(body.get("sourceCoverage").toString())
+                .contains("XIAOHONGSHU", "UNAVAILABLE");
+        assertThat(deepEvidenceCalls).hasValue(3);
     }
 
     private ResponseEntity<String> create(String userId, String body) {

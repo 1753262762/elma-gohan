@@ -15,6 +15,7 @@ EXPECTED_OPERATIONS = {
     ("/recommendations", "post"): ("createRecommendation", "201"),
     ("/recommendations/{id}/reroll", "post"): ("rerollRecommendation", "200"),
     ("/recommendations/{id}/feedback", "post"): ("submitRecommendationFeedback", "201"),
+    ("/recommendations/{id}/deep-evidence", "post"): ("deepenRecommendationEvidence", "200"),
 }
 
 

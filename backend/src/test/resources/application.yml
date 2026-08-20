@@ -38,6 +38,21 @@ elma:
     enabled: false
     ak: ""
     base-url: http://localhost:1
+  deep-evidence:
+    enabled: false
+    api-key: ""
+    base-url: http://localhost:1
+    connect-timeout-ms: 500
+    read-timeout-ms: 500
+    overall-timeout-ms: 1000
+    result-count: 10
+    evidence-cache-hours: 12
+    failure-cache-minutes: 5
+    analysis-cache-hours: 6
+    max-links-per-source: 3
+    entity-match-threshold: 0.72
+    analysis-algorithm-version: deep-evidence-v0.1
+    risk-algorithm-version: deep-risk-v0.1
   evidence:
     provider: file
     location: classpath:evidence/test-evidence.json

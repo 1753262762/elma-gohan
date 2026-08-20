@@ -1,6 +1,7 @@
 import { apiRequest } from '@/api/client'
 import type {
   CreateRecommendationRequest,
+  DeepEvidenceResponse,
   FeedbackResponse,
   FeedbackResult,
   RecommendationResponse,
@@ -31,5 +32,14 @@ export function submitRecommendationFeedback(
     path: `/recommendations/${encodeURIComponent(recommendationId)}/feedback`,
     method: 'POST',
     data: { result },
+  })
+}
+
+export function deepenRecommendationEvidence(
+  recommendationId: string,
+): Promise<DeepEvidenceResponse> {
+  return apiRequest<DeepEvidenceResponse>({
+    path: `/recommendations/${encodeURIComponent(recommendationId)}/deep-evidence`,
+    method: 'POST',
   })
 }

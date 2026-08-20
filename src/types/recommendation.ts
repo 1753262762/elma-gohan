@@ -6,6 +6,9 @@ export type BusinessStatus = 'OPEN' | 'CLOSED' | 'UNKNOWN'
 export type EvidenceStatus = 'AVAILABLE' | 'NO_DATA' | 'UNAVAILABLE'
 export type EntityMatchStatus = 'MATCHED' | 'AMBIGUOUS' | 'NO_MATCH' | 'UNAVAILABLE'
 export type ConsistencyLevel = 'CONSISTENT' | 'SLIGHT_DIFFERENCE' | 'CONFLICT' | 'UNKNOWN'
+export type DeepEvidenceSource = 'AMAP' | 'BAIDU' | 'BILIBILI' | 'XIAOHONGSHU' | 'DIANPING'
+export type DeepConsistencyLevel = 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN'
+export type DeepCacheStatus = 'HIT' | 'PARTIAL_HIT' | 'MISS'
 
 export interface CreateRecommendationRequest {
   latitude: number
@@ -82,4 +85,44 @@ export interface RiskAssessment {
   confidence: number
   reasons: string[]
   algorithmVersion: string
+}
+
+export interface DeepEvidenceResponse {
+  recommendationId: string
+  restaurantId: string
+  restaurantName: string
+  baseRisk: RiskAssessment
+  deepRisk: RiskAssessment
+  structuredEvidence: EvidenceSummary | null
+  sourceCoverage: DeepSourceCoverage[]
+  signals: DeepSignalSummary
+  consistency: DeepConsistency
+  links: DeepEvidenceLink[]
+  cacheStatus: DeepCacheStatus
+  generatedAt: string
+  expiresAt: string
+}
+
+export interface DeepSourceCoverage {
+  source: DeepEvidenceSource
+  status: EvidenceStatus
+  resultCount: number | null
+}
+
+export interface DeepSignalSummary {
+  positive: string[]
+  negative: string[]
+  cautions: string[]
+}
+
+export interface DeepConsistency {
+  level: DeepConsistencyLevel
+  reason: string
+}
+
+export interface DeepEvidenceLink {
+  source: 'BILIBILI' | 'XIAOHONGSHU' | 'DIANPING'
+  title: string
+  url: string
+  publishedAt: string | null
 }

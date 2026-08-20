@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiRequest } from '@/api/client'
 import {
   createRecommendation,
+  deepenRecommendationEvidence,
   rerollRecommendation,
   submitRecommendationFeedback,
 } from '@/api/recommendation'
@@ -45,6 +46,17 @@ describe('recommendation API', () => {
     await expect(rerollRecommendation('session/id')).resolves.toBe(response)
     expect(apiRequest).toHaveBeenCalledWith({
       path: '/recommendations/session%2Fid/reroll',
+      method: 'POST',
+    })
+  })
+
+  it('loads deep evidence only through the on-demand session endpoint', async () => {
+    const response = { recommendationId: 'recommendation-id' }
+    vi.mocked(apiRequest).mockResolvedValue(response)
+
+    await expect(deepenRecommendationEvidence('session/id')).resolves.toBe(response)
+    expect(apiRequest).toHaveBeenCalledWith({
+      path: '/recommendations/session%2Fid/deep-evidence',
       method: 'POST',
     })
   })

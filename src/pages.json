@@ -13,6 +13,13 @@
         "navigationStyle": "custom",
         "navigationBarTitleText": "今天吃这个"
       }
+    },
+    {
+      "path": "pages/deep-evidence/index",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "深挖结果"
+      }
     }
   ],
   "globalStyle": {

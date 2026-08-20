@@ -96,6 +96,14 @@
         <text class="accept-arrow">↗</text>
       </button>
       <button
+        class="deep-evidence-button"
+        :class="{ 'deep-evidence-button--disabled': operationBusy }"
+        :disabled="operationBusy"
+        @click="openDeepEvidence"
+      >
+        深挖一下这家
+      </button>
+      <button
         v-if="recommendation.alternativesRemaining > 0"
         class="reroll-button"
         :class="{ 'reroll-button--disabled': operationBusy }"
@@ -271,6 +279,15 @@ async function openNavigation() {
   } finally {
     navigating.value = false
   }
+}
+
+function openDeepEvidence() {
+  const current = recommendation.value
+  if (!current || operationBusy.value) return
+  uni.navigateTo({
+    url: `/pages/deep-evidence/index?recommendationId=${encodeURIComponent(current.recommendationId)}`
+      + `&restaurantId=${encodeURIComponent(current.restaurant.id)}`,
+  })
 }
 
 async function submitFeedback(result: FeedbackResult) {
@@ -612,6 +629,23 @@ async function submitFeedback(result: FeedbackResult) {
 .accept-arrow {
   font-size: 36rpx;
   font-weight: 400;
+}
+
+.deep-evidence-button {
+  width: 100%;
+  margin: 16rpx 0 0;
+  padding: 23rpx 24rpx;
+  border: 2rpx solid #5b61d6;
+  border-radius: 12rpx;
+  background: #f0f0ff;
+  color: #4147ad;
+  font-size: 23rpx;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.deep-evidence-button--disabled {
+  opacity: 0.62;
 }
 
 .reroll-button {
