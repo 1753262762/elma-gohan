@@ -130,15 +130,18 @@ class RecommendationApiTest {
         assertThat(risk.get("riskLevel").asText()).isIn("LOW", "MEDIUM_LOW", "MEDIUM", "HIGH");
         assertThat(risk.get("confidence").asDouble()).isBetween(0.0, 1.0);
         assertThat(risk.get("reasons").size()).isGreaterThanOrEqualTo(1);
-        assertThat(risk.get("algorithmVersion").asText()).isEqualTo("risk-v0.2");
+        assertThat(risk.get("algorithmVersion").asText()).isEqualTo("risk-v0.3");
         assertThat(body.get("reasons").size()).isBetween(1, 5);
         assertThat(body.get("alternativesRemaining").asInt()).isBetween(0, 5);
-        // 落库校验:推荐日志含条件快照与双算法版本
+        // 落库校验:推荐日志含条件快照、双算法版本与随机种子
         Integer logs = jdbc.queryForObject(
                 "SELECT count(*) FROM recommendation_log WHERE request_condition_json IS NOT NULL "
                         + "AND recommended_restaurant_id = current_restaurant_id "
-                        + "AND risk_algorithm_version = 'risk-v0.2' "
-                        + "AND recommendation_algorithm_version = 'recommendation-v0.2'", Integer.class);
+                        + "AND risk_algorithm_version = 'risk-v0.3' "
+                        + "AND recommendation_algorithm_version = 'recommendation-v0.3' "
+                        + "AND random_seed <> 0 "
+                        + "AND jsonb_array_length(selection_snapshot_json) >= candidate_count",
+                Integer.class);
         assertThat(logs).isEqualTo(1);
     }
 

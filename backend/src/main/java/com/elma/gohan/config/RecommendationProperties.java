@@ -8,11 +8,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "elma.recommendation")
 public class RecommendationProperties {
 
-    private String algorithmVersion = "recommendation-v0.2";
+    private String algorithmVersion = "recommendation-v0.3";
     private int topK = 10;
     /** 会话候选池大小:首次推荐 + 最多 5 次重新选择。 */
     private int poolSize = 6;
     private int walkingSpeedMetersPerMinute = 80;
+    /** 距离因子参考步行分钟数:此距离处 distanceFactor=0.5,与搜索半径解耦。 */
+    private double walkReferenceMinutes = 10.0;
+    /** 自由文本 dislike 命中名称/品类时的软降权绝对值(正数,命中时由 scorer 扣除)。 */
+    private double dislikePenalty = 10.0;
     private Weights weights = new Weights();
     private Taste taste = new Taste();
     private double uncertaintyRisk = 50.0;
@@ -27,6 +31,10 @@ public class RecommendationProperties {
     public void setWalkingSpeedMetersPerMinute(int walkingSpeedMetersPerMinute) {
         this.walkingSpeedMetersPerMinute = walkingSpeedMetersPerMinute;
     }
+    public double getWalkReferenceMinutes() { return walkReferenceMinutes; }
+    public void setWalkReferenceMinutes(double v) { walkReferenceMinutes = v; }
+    public double getDislikePenalty() { return dislikePenalty; }
+    public void setDislikePenalty(double v) { dislikePenalty = v; }
     public Weights getWeights() { return weights; }
     public void setWeights(Weights weights) { this.weights = weights; }
     public Taste getTaste() { return taste; }

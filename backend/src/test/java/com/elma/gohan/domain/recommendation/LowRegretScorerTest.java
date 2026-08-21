@@ -24,7 +24,7 @@ class LowRegretScorerTest {
     private final LowRegretScorer scorer = new LowRegretScorer(props);
 
     private RiskResult risk(int score) {
-        return new RiskResult(score, RiskLevel.LOW, List.of("评分稳定"), "risk-v0.2");
+        return new RiskResult(score, RiskLevel.LOW, List.of("评分稳定"), "risk-v0.3");
     }
 
     @Test
@@ -34,7 +34,7 @@ class LowRegretScorerTest {
         double near = scorer.score(TestRestaurants.full("a", 4.6, 100, 20), risk(0), condition);
         double far = scorer.score(TestRestaurants.full("b", 3.0, 1000, null), risk(60), condition);
         assertThat(near).isCloseTo(90.0, within(15.0));
-        assertThat(far).isLessThan(50.0);
+        assertThat(far).isLessThan(65.0);
         assertThat(far).isGreaterThanOrEqualTo(0);
         assertThat(near).isLessThanOrEqualTo(100);
         assertThat(near).isGreaterThan(far);
@@ -81,12 +81,56 @@ class LowRegretScorerTest {
         Restaurant restaurant = category("c", "CHINESE");
         var condition = new SearchCondition(1000, null, "ANY", List.of());
         RiskResult trusted = new RiskResult(0, RiskLevel.LOW, 1.0, RiskFactors.empty(),
-                List.of("证据充分"), "risk-v0.2");
+                List.of("证据充分"), "risk-v0.3");
         RiskResult uncertain = new RiskResult(0, RiskLevel.LOW, 0.0, RiskFactors.empty(),
-                List.of("证据不足"), "risk-v0.2");
+                List.of("证据不足"), "risk-v0.3");
 
         assertThat(scorer.score(restaurant, trusted, condition))
                 .isGreaterThan(scorer.score(restaurant, uncertain, condition));
+    }
+
+    @Test
+    @DisplayName("距离因子与搜索半径解耦:同一餐厅不因 radius 改变得分")
+    void distanceFactorIndependentOfRadius() {
+        Restaurant r = TestRestaurants.full("a", 4.5, 800);
+        double smallRadius = scorer.score(r, risk(10),
+                new SearchCondition(500, null, "ANY", List.of()));
+        double largeRadius = scorer.score(r, risk(10),
+                new SearchCondition(3000, null, "ANY", List.of()));
+        assertThat(smallRadius).isEqualTo(largeRadius);
+    }
+
+    @Test
+    @DisplayName("自由文本 dislike 命中名称时软降权而非剔除")
+    void dislikePenaltyLowersScore() {
+        var clean = new SearchCondition(1000, null, "ANY", List.of());
+        var disliked = new SearchCondition(1000, null, "ANY", List.of("面对面"));
+        Restaurant r = TestRestaurants.full("a", "面对面餐厅", 4.5, 300, 30);
+        assertThat(scorer.score(r, risk(10), disliked))
+                .isLessThan(scorer.score(r, risk(10), clean));
+    }
+
+    @Test
+    @DisplayName("口味校正按剩余空间施加:高分候选不饱和堆顶")
+    void tasteAdjustmentBoundedAtHighBase() {
+        Restaurant strong = TestRestaurants.full("a", 5.0, 10, 10);
+        var condition = new SearchCondition(1000, 40, "ANY", List.of());
+        TasteProfile positive = new TasteProfile(2, Map.of("CHINESE", 3.0),
+                Map.of(), Map.of(), 6, LocalDateTime.now());
+        double withoutTaste = scorer.score(strong, risk(0), new UserPreference(condition));
+        double withTaste = scorer.score(strong, risk(0), new UserPreference(condition, positive));
+        // 基础分越高,正向口味校正的实际加成越小
+        assertThat(withTaste).isGreaterThan(withoutTaste);
+        assertThat(withTaste).isLessThanOrEqualTo(100.0);
+        assertThat(withTaste - withoutTaste).isLessThan(15.0);
+    }
+
+    @Test
+    @DisplayName("用户未设预算时不生成\"预算合适\"理由")
+    void budgetReasonOnlyWhenBudgetProvided() {
+        var condition = new SearchCondition(1000, null, "ANY", List.of());
+        var reasons = scorer.reasons(TestRestaurants.full("a", 4.6, 100), risk(0), condition);
+        assertThat(reasons).doesNotContain("预算合适");
     }
 
     private Restaurant category(String id, String category) {

@@ -20,10 +20,20 @@ class RuleBasedRecentTrendDetectorTest {
 
     @Test
     void detectsDownStableUpAndUnknown() {
-        assertThat(detector.detect(samples(4.8, 2.0))).isEqualTo(RecentTrend.DOWN);
-        assertThat(detector.detect(samples(4.2, 4.3))).isEqualTo(RecentTrend.STABLE);
-        assertThat(detector.detect(samples(3.5, 4.5))).isEqualTo(RecentTrend.UP);
-        assertThat(detector.detect(List.of())).isEqualTo(RecentTrend.UNKNOWN);
+        assertThat(detector.detect(samples(4.8, 2.0)).trend()).isEqualTo(RecentTrend.DOWN);
+        assertThat(detector.detect(samples(4.2, 4.3)).trend()).isEqualTo(RecentTrend.STABLE);
+        assertThat(detector.detect(samples(3.5, 4.5)).trend()).isEqualTo(RecentTrend.UP);
+        assertThat(detector.detect(List.of()).trend()).isEqualTo(RecentTrend.UNKNOWN);
+    }
+
+    @Test
+    void downSeverityScalesWithMargin() {
+        TrendResult mild = detector.detect(samples(4.8, 4.2));
+        TrendResult severe = detector.detect(samples(4.8, 2.0));
+        // 4.8 -> 4.2 降幅 0.6 刚过 0.4 阈值;4.8 -> 2.0 远超阈值
+        assertThat(mild.trend()).isEqualTo(RecentTrend.DOWN);
+        assertThat(severe.trend()).isEqualTo(RecentTrend.DOWN);
+        assertThat(severe.severity()).isGreaterThan(mild.severity());
     }
 
     private List<ReviewEvidence> samples(double historical, double recent) {

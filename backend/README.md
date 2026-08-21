@@ -31,7 +31,7 @@ controller/        三个 POST 接口,DTO 严格对齐 openapi.yaml
 application/       RecommendationService:会话、候选池、reroll 游标、反馈编排
 domain/
   restaurant/      Restaurant 标准模型(第三方数据必须先转此模型)
-  risk/            risk-v0.2:评分/模板/burst/趋势/数据不足,阈值在 application.yml(elma.risk.*)
+  risk/            risk-v0.3:评分/模板/burst/连续趋势/数据不足,阈值在 application.yml(elma.risk.*)
   recommendation/  高风险剔除 -> LowRegretScore + TasteProfile -> Top-10 -> 6 家候选池
 provider/
   poi/             PoiProvider + AmapPoiProvider/AmapClient/AmapResponseMapper

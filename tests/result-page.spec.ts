@@ -41,7 +41,7 @@ function recommendation(overrides: Partial<RecommendationResponse> = {}): Recomm
       riskLevel: 'MEDIUM_LOW',
       confidence: 0.4,
       reasons: ['信息有限'],
-      algorithmVersion: 'risk-v0.2',
+      algorithmVersion: 'risk-v0.3',
     },
     reasons: ['距离可接受'],
     alternativesRemaining: 0,

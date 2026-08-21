@@ -1,6 +1,6 @@
 package com.elma.gohan.domain.risk;
 
-/** risk-v0.2 的五项结构化风险，单项范围均为 0～100。 */
+/** risk-v0.3 的五项结构化风险，单项范围均为 0～100。 */
 public record RiskFactors(int ratingRisk, int templateRisk, int burstRisk, int trendRisk,
                           int dataInsufficientRisk) {
     public RiskFactors {

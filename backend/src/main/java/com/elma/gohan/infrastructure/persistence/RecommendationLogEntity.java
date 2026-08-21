@@ -45,6 +45,14 @@ public class RecommendationLogEntity {
     @Column(name = "recommendation_algorithm_version", length = 32, nullable = false)
     private String recommendationAlgorithmVersion;
 
+    /** 候选池加权随机的种子:同 seed + 同输入可确定性重放。 */
+    @Column(name = "random_seed", nullable = false)
+    private long randomSeed;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "selection_snapshot_json", columnDefinition = "jsonb", nullable = false)
+    private String selectionSnapshotJson;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -55,7 +63,9 @@ public class RecommendationLogEntity {
                                    int candidateCount, UUID currentRestaurantId,
                                    UUID recommendedRestaurantId, int riskScore,
                                    double lowRegretScore, String riskAlgorithmVersion,
-                                   String recommendationAlgorithmVersion, LocalDateTime createdAt) {
+                                   String recommendationAlgorithmVersion, long randomSeed,
+                                   String selectionSnapshotJson,
+                                   LocalDateTime createdAt) {
         this.id = id;
         this.anonymousUserId = anonymousUserId;
         this.requestConditionJson = requestConditionJson;
@@ -66,6 +76,8 @@ public class RecommendationLogEntity {
         this.lowRegretScore = lowRegretScore;
         this.riskAlgorithmVersion = riskAlgorithmVersion;
         this.recommendationAlgorithmVersion = recommendationAlgorithmVersion;
+        this.randomSeed = randomSeed;
+        this.selectionSnapshotJson = selectionSnapshotJson;
         this.createdAt = createdAt;
     }
 
@@ -79,6 +91,8 @@ public class RecommendationLogEntity {
     public double getLowRegretScore() { return lowRegretScore; }
     public String getRiskAlgorithmVersion() { return riskAlgorithmVersion; }
     public String getRecommendationAlgorithmVersion() { return recommendationAlgorithmVersion; }
+    public long getRandomSeed() { return randomSeed; }
+    public String getSelectionSnapshotJson() { return selectionSnapshotJson; }
     public LocalDateTime getCreatedAt() { return createdAt; }
 
     public void updateCurrent(UUID currentRestaurantId) {

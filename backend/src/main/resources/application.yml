@@ -44,7 +44,7 @@ elma:
     location: ${EVIDENCE_FILE:classpath:evidence/restaurant-evidence.json}
     max-reviews-per-restaurant: 200
   risk:
-    algorithm-version: risk-v0.2
+    algorithm-version: risk-v0.3
     rating:
       fair-min: 4.0
       good-min: 4.2
@@ -94,6 +94,7 @@ elma:
       poi-weight: 0.25
       evidence-weight: 0.75
       target-reviews: 30
+      freshness-window-days: 120
     weights:
       rating: 0.25
       template: 0.20
@@ -101,15 +102,19 @@ elma:
       trend: 0.15
       data-insufficient: 0.25
     price-anomaly-ratio: 1.5
+    price-anomaly-min-pool-size: 5
+    trend-target-sample: 30
     levels:
       low-max-inclusive: 20
       medium-low-max-inclusive: 40
       medium-max-inclusive: 60
   recommendation:
-    algorithm-version: recommendation-v0.2
+    algorithm-version: recommendation-v0.3
     top-k: 10
     pool-size: 6
     walking-speed-meters-per-minute: 80
+    walk-reference-minutes: 10
+    dislike-penalty: 10
     weights:
       rating: 25
       distance: 20

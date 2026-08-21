@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ELMA 家今天的饭 · 推荐算法验收手册(通俗版 v0.3)</title>
+<style>
+  :root {
+    --bg: #0f1419; --panel: #1a2129; --panel2: #212a35; --border: #2d3a48;
+    --text: #d8e1ea; --muted: #8b9bab; --accent: #4fc3f7; --accent2: #ffb74d;
+    --green: #81c784; --yellow: #ffd54f; --orange: #ff8a65; --red: #e57373;
+    --mono: "Cascadia Code", Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; line-height: 1.7; padding: 24px; max-width: 1180px; margin: 0 auto; }
+  h1 { font-size: 24px; margin-bottom: 4px; }
+  h1 .ver { color: var(--accent); font-family: var(--mono); font-size: 14px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  h2 { font-size: 19px; margin: 36px 0 6px; }
+  h2 .tag { font-size: 12px; color: var(--muted); font-weight: normal; margin-left: 8px; }
+  .h2sub { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+  code { font-family: var(--mono); background: var(--panel2); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; color: var(--accent2); }
+  .muted { color: var(--muted); font-size: 13px; }
+  .say { background: #1b2733; border-left: 4px solid var(--accent); padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 14px; margin: 10px 0; }
+  .say b { color: var(--accent); }
+  .warnbox { background: #2b1d1d; border-left: 4px solid var(--red); padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 14px; margin: 10px 0; }
+  .warnbox b { color: var(--red); }
+  .okbox { background: #1b2b1f; border-left: 4px solid var(--green); padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 14px; margin: 10px 0; }
+  .okbox b { color: var(--green); }
+
+  /* ---------- 流程图 ---------- */
+  .flow { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; justify-content: center; }
+  .node { flex: 1; min-width: 165px; max-width: 210px; background: var(--panel2); border: 2px solid var(--border); border-radius: 12px; padding: 12px; text-align: center; }
+  .node .emoji { font-size: 26px; }
+  .node h3 { font-size: 14px; margin: 4px 0; }
+  .node p { font-size: 12px; color: var(--muted); }
+  .node .badge { display: inline-block; margin-top: 6px; font-size: 11px; padding: 1px 10px; border-radius: 10px; }
+  .node.kill { border-color: #6b3a3a; } .node.kill .badge { background: #3a1b1b; color: var(--red); }
+  .node.check { border-color: #6b5a2a; } .node.check .badge { background: #3a3a1b; color: var(--yellow); }
+  .node.pick { border-color: #2a6b5a; } .node.pick .badge { background: #1b3a24; color: var(--green); }
+  .arrow { align-self: center; color: var(--muted); font-size: 22px; flex: 0 0 auto; }
+
+  /* ---------- 权重条形图 ---------- */
+  .wbar-row { display: flex; align-items: center; gap: 10px; margin: 9px 0; }
+  .wbar-label { width: 170px; font-size: 13.5px; text-align: right; }
+  .wbar-label small { display: block; color: var(--muted); font-size: 11px; }
+  .wbar-track { flex: 1; background: #10161d; border-radius: 8px; height: 30px; position: relative; overflow: hidden; }
+  .wbar-fill { height: 100%; border-radius: 8px; display: flex; align-items: center; padding-left: 10px; font-size: 12px; font-weight: 700; color: #0a1016; min-width: 44px; transition: width .3s; }
+  .wbar-note { width: 100%; font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  /* ---------- 仪表盘 ---------- */
+  .gauge-wrap { display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
+  .gauge { position: relative; width: 200px; height: 110px; overflow: hidden; flex: 0 0 auto; }
+  .gauge svg { display: block; }
+  .gauge .needle { transform-origin: 100px 100px; transition: transform .3s; }
+  .gauge-val { position: absolute; bottom: 0; width: 100%; text-align: center; font-family: var(--mono); font-size: 26px; font-weight: 700; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { border: 1px solid var(--border); padding: 7px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--panel2); color: var(--accent); font-weight: 600; white-space: nowrap; }
+  td.num { text-align: right; font-family: var(--mono); }
+  .pill { display: inline-block; border-radius: 10px; padding: 0 10px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .p-low { background: #1b3a24; color: var(--green); }
+  .p-mlow { background: #3a3a1b; color: var(--yellow); }
+  .p-med { background: #3a2a1b; color: var(--orange); }
+  .p-high { background: #3a1b1b; color: var(--red); }
+
+  /* ---------- 计算器 ---------- */
+  .calc { display: grid; grid-template-columns: 330px 1fr; gap: 20px; }
+  @media (max-width: 920px) { .calc { grid-template-columns: 1fr; } }
+  .ctrl { margin-bottom: 9px; }
+  .ctrl label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 2px; }
+  .ctrl label .val { font-family: var(--mono); color: var(--accent2); }
+  .ctrl input[type=range] { width: 100%; accent-color: var(--accent); }
+  .ctrl select { width: 100%; background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 13px; }
+  .verdict { border-radius: 12px; padding: 14px 16px; font-size: 15px; margin-bottom: 12px; }
+  .verdict.yes { background: #1b2b1f; border: 1px solid var(--green); }
+  .verdict.no { background: #2b1d1d; border: 1px solid var(--red); }
+  .verdict .big { font-size: 18px; font-weight: 700; }
+  .fbar-row { display: flex; align-items: center; gap: 8px; margin: 5px 0; font-size: 12.5px; }
+  .fbar-name { width: 150px; text-align: right; color: var(--muted); white-space: nowrap; }
+  .fbar-name small { display: block; font-size: 11px; }
+  .fbar-bg { flex: 1; background: #10161d; border-radius: 4px; height: 17px; }
+  .fbar { height: 100%; border-radius: 4px; background: linear-gradient(90deg, #2a6f8f, var(--accent)); }
+  .fbar.neg { background: linear-gradient(90deg, #8f4a2a, var(--orange)); }
+  .fbar-val { width: 120px; font-family: var(--mono); font-size: 11.5px; }
+  .formula { font-family: var(--mono); font-size: 11.5px; color: var(--muted); background: #10161d; border-radius: 6px; padding: 10px; margin-top: 10px; white-space: pre-wrap; }
+
+  /* ---------- 验收清单 ---------- */
+  .chk { list-style: none; }
+  .chk li { padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; display: flex; gap: 10px; align-items: flex-start; }
+  .chk .box { flex: 0 0 auto; width: 18px; height: 18px; border: 2px solid var(--muted); border-radius: 4px; margin-top: 3px; }
+  .chk b { color: var(--accent); }
+  .chk .how { color: var(--muted); font-size: 12.5px; display: block; }
+</style>
+</head>
+<body>
+
+<h1>🍽 ELMA 家今天的饭 · 推荐算法验收手册 <span class="ver">通俗版 · recommendation-v0.3 + risk-v0.3(2026-08 审计修复后)</span></h1>
+<div class="sub">本页所有数字都来自后端代码的默认配置。给你的任务只有一个:逐节看图 + 拖动下面的滑块,确认算法的行为符合你的预期。</div>
+
+<!-- ============================================================ 1 -->
+<h2>一、推荐是怎么一步步做出来的</h2>
+<div class="h2sub">想象你站在路边,系统帮你挑一家店,要过 6 道关。</div>
+<div class="flow">
+  <div class="node kill"><div class="emoji">🚫</div><h3>第 1 关:先砍掉不合格的</h3>
+    <p>太远 / 超预算 / 已歇业 / 不是你要的品类 / 不想吃关键词<b>精确命中品类</b>(名称子串误杀已改为打分时降权)</p>
+    <span class="badge">砍掉就不再回来</span></div>
+  <div class="arrow">➡</div>
+  <div class="node kill"><div class="emoji">⚠️</div><h3>第 2 关:踢掉高危店</h3>
+    <p>疑似刷评、口碑崩了、数据严重缺失的店,风险分超过 60 直接出局</p>
+    <span class="badge">风险高 = 不推荐</span></div>
+  <div class="arrow">➡</div>
+  <div class="node check"><div class="emoji">📐</div><h3>第 3 关:给剩下的打分</h3>
+    <p>六项指标加权,满分 100,再加一点你的口味偏好(±15)</p>
+    <span class="badge">见第二节图表</span></div>
+  <div class="arrow">➡</div>
+  <div class="node check"><div class="emoji">🔀</div><h3>第 4 关:混着排,不单调</h3>
+    <p>按品类轮流排,不会连着 5 家都是火锅</p>
+    <span class="badge">只在前 10 名里挑</span></div>
+  <div class="arrow">➡</div>
+  <div class="node pick"><div class="emoji">🎲</div><h3>第 5 关:抽 6 家当备胎</h3>
+    <p>前 10 名里按分数高低当"彩票权重"抽 6 家:分高的机会大,分低的也有机会。<b>随机种子已落库,结果可回放</b></p>
+    <span class="badge">推荐 1 家 + 换 5 次</span></div>
+  <div class="arrow">➡</div>
+  <div class="node pick"><div class="emoji">🔁</div><h3>第 6 关:越用越懂你</h3>
+    <p>你的 👍/😐/👎 会慢慢改变下次的口味加分</p>
+    <span class="badge">见第四节</span></div>
+</div>
+<div class="say">💬 <b>验收点:</b>候选池永远是 <b>6 家</b>(1 家首推 + 最多换 5 次)。换完了系统就把第一次推的那家再端回来,不会凭空冒出第 7 家。前端判断"还能不能换"只看 <code>alternativesRemaining</code> 这一个数字(0~5)。</div>
+
+<!-- ============================================================ 2 -->
+<h2>二、打分:六项指标,谁说了算?</h2>
+<div class="h2sub">一家店的总分 = 下面六项各拿多少分 + 口味小调整。条越长 = 这一项影响越大。</div>
+<div class="panel" id="weights"></div>
+
+<div class="say">💬 <b>怎么看这张图:</b>"评分"占 25 分,意味着一家满分 5 星的店比一家 3 星的店最多能多拿 10 分左右;"风险"占 20 分,一家有疑似刷评的店会被压低约 20 分。口味的 ±15 分是<b>额外叠加</b>的,不受这 100 分限制。</div>
+
+<div class="warnbox">⚠️ <b>审计发现的三件事及处理状态(v0.3):</b>
+  <br>① <b>评分低的店被罚两次</b>--属实的共线路径,已作为"成熟门店安全偏好"记入 docs/recommendation-algorithm-notes.md,待有真实数据后做消融实验再决定是否调权重。
+  <br>② <b>预算语义</b>--明确为"硬上限 + 温和便宜偏好";用户不填预算时不再误报"预算合适"理由(已修复)。
+  <br>③ <b>口味偏好绑架推荐</b>--已修复:正向口味校正按剩余空间比例施加(基础分越高加成越小),高分候选不再集体堆顶;自由文本 dislike 从一刀切剔除改为打分降权(默认 −10,可被高分挽回)。
+</div>
+
+<!-- ============================================================ 3 -->
+<h2>三、风险雷达:什么样的店会被踢出去?</h2>
+<div class="h2sub">风险分 0~100,五个信号加权。左边的仪表盘显示:分数越高越危险。</div>
+<div class="panel">
+  <div class="gauge-wrap">
+    <div class="gauge">
+      <svg width="200" height="110" viewBox="0 0 200 110">
+        <path d="M 15 100 A 85 85 0 0 1 52 26" fill="none" stroke="#81c784" stroke-width="14" stroke-linecap="round"/>
+        <path d="M 52 26 A 85 85 0 0 1 109 15" fill="none" stroke="#ffd54f" stroke-width="14" stroke-linecap="round"/>
+        <path d="M 109 15 A 85 85 0 0 1 148 40" fill="none" stroke="#ff8a65" stroke-width="14" stroke-linecap="round"/>
+        <path d="M 148 40 A 85 85 0 0 1 185 100" fill="none" stroke="#e57373" stroke-width="14" stroke-linecap="round"/>
+        <line class="needle" id="risk-needle" x1="100" y1="100" x2="100" y2="30" stroke="#d8e1ea" stroke-width="3.5" stroke-linecap="round"/>
+        <circle cx="100" cy="100" r="6" fill="#d8e1ea"/>
+      </svg>
+      <div class="gauge-val" id="gauge-lvl">-</div>
+    </div>
+    <div style="flex:1; min-width: 260px;">
+      <table>
+        <tr><th>风险分</th><th>等级</th><th>系统怎么办</th></tr>
+        <tr><td class="num">0 ~ 20</td><td><span class="pill p-low">放心吃</span></td><td>正常推荐,理由里显示"踩坑风险低"</td></tr>
+        <tr><td class="num">21 ~ 40</td><td><span class="pill p-mlow">留个心眼</span></td><td>正常推荐</td></tr>
+        <tr><td class="num">41 ~ 60</td><td><span class="pill p-med">有点悬</span></td><td>正常推荐,但打分时被压低</td></tr>
+        <tr><td class="num">61 ~ 100</td><td><span class="pill p-high">危险 ⛔</span></td><td><b>直接踢出,永不推荐</b></td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <b style="color:var(--accent)">五个危险信号(按权重从大到小)</b>
+  <div id="riskfactors"></div>
+</div>
+
+<div class="warnbox">⚠️ <b>风险雷达的两个盲区:</b>
+  <br>① <b>查不清底细的店,雷达会"手软"</b>--机制仍在(confidence 低时风险分向 50 收缩),但 v0.3 起 confidence 已把证据新鲜度算进去:全部评论超过 120 天的店,置信度显著下降,不再与近期证据同权(已修复)。
+  <br>② <b>一条差评趋势就判死刑</b>--已修复:趋势风险改为连续函数,小幅下降只小幅扣分,且评论样本少时自动收缩;"降 0.4 分直接顶格"的悬崖已消除。
+</div>
+
+<!-- ============================================================ 4 -->
+<h2>四、口味学习:你点 👍👎 之后发生了什么?</h2>
+<div class="flow" style="justify-content:flex-start">
+  <div class="node pick"><div class="emoji">🍛</div><h3>你反馈了一次</h3><p>👍 / 😐 / 👎 三选一</p></div>
+  <div class="arrow">➡</div>
+  <div class="node check"><div class="emoji">⏳</div><h3>老印象先打折</h3><p>过去所有的口味记忆统一乘一个衰减系数——太久远的反馈慢慢忘记</p></div>
+  <div class="arrow">➡</div>
+  <div class="node check"><div class="emoji">📝</div><h3>记三本小账</h3><p>①爱吃什么品类 ②爱花什么价位 ③爱跑多远的路</p></div>
+  <div class="arrow">➡</div>
+  <div class="node pick"><div class="emoji">➕</div><h3>下次打分时兑现</h3><p>三本账折算成最多 ±15 分,叠加到总分上</p></div>
+</div>
+<div class="say">💬 <b>白话:</b>你连点三次 👎 川菜,下次川菜的分数就被压 7 分左右,基本出局;反过来 👍 三次也是 +7。每本账都有封顶(不能无限累加),太久不反馈会慢慢"失忆"。推荐理由里出现"符合你的历史口味",说明这家店吃到至少 +3 分的口味加分。</div>
+
+<!-- ============================================================ 5 -->
+<h2>五、动手试:这家店会被推荐吗? <span class="tag">拖滑块,右边的判定实时更新</span></h2>
+<div class="h2sub">左边模拟一家店的各项条件和你的搜索设置,右边就是系统的真实反应。公式和后端代码逐行一致。</div>
+<div class="calc">
+  <div class="panel">
+    <div class="ctrl"><label>这家店的评分 <span class="val" id="v-rating">4.3</span></label>
+      <input type="range" id="in-rating" min="0" max="5" step="0.1" value="4.3"></div>
+    <div class="ctrl"><label>它离你多远 <span class="val" id="v-dist">400 m</span></label>
+      <input type="range" id="in-dist" min="0" max="3000" step="50" value="400"></div>
+    <div class="ctrl"><label>你设的搜索半径 <span class="val" id="v-radius">1000 m</span></label>
+      <input type="range" id="in-radius" min="500" max="3000" step="500" value="1000"></div>
+    <div class="ctrl"><label>你设的预算上限 <span class="val" id="v-budget">50 元</span></label>
+      <input type="range" id="in-budget" min="0" max="200" step="10" value="50">
+      <div class="muted" style="font-size:11px">拖到 0 = 不限预算</div></div>
+    <div class="ctrl"><label>这家店的人均价 <span class="val" id="v-price">35 元</span></label>
+      <input type="range" id="in-price" min="0" max="200" step="5" value="35">
+      <div class="muted" style="font-size:11px">拖到 0 = 未知</div></div>
+    <div class="ctrl"><label>品类筛选</label>
+      <select id="in-cat">
+        <option value="ANY">不限(在正餐/快餐/甜饮之间均衡)</option>
+        <option value="MEAL" selected>正餐</option>
+        <option value="FAST_FOOD">快餐</option>
+        <option value="DESSERT_DRINK">甜点饮品</option>
+      </select></div>
+    <div class="ctrl"><label>这家店的信息全不全</label>
+      <select id="in-comp">
+        <option value="FULL" selected>很全(评分/评价/营业时间/价格都有)</option>
+        <option value="PARTIAL">部分缺失</option>
+        <option value="MINIMAL">只有名字和位置</option>
+      </select></div>
+    <div class="ctrl"><label>风险分(0~100) <span class="val" id="v-risk">15</span></label>
+      <input type="range" id="in-risk" min="0" max="100" step="1" value="15"></div>
+    <div class="ctrl"><label>证据把握度(0~1) <span class="val" id="v-conf">0.8</span></label>
+      <input type="range" id="in-conf" min="0" max="1" step="0.05" value="0.8"></div>
+    <div class="ctrl"><label>你的口味加分 <span class="val" id="v-taste">+5</span></label>
+      <input type="range" id="in-taste" min="-15" max="15" step="1" value="5"></div>
+  </div>
+
+  <div class="panel">
+    <div class="verdict" id="out-verdict"></div>
+    <div id="factors"></div>
+    <div class="formula" id="out-formula"></div>
+    <div id="out-reasons"></div>
+  </div>
+</div>
+
+<!-- ============================================================ 6 -->
+<h2>六、验收清单 <span class="tag">逐条打勾</span></h2>
+<div class="h2sub">每条都标了怎么验。全部通过 = 算法行为符合本页描述。</div>
+<div class="panel">
+  <ul class="chk">
+    <li><span class="box"></span><div><b>候选池永远 6 家</b>——同一会话连换 5 次后第 6 次返回的是第一次那家,没有第 7 家。<span class="how">验法:接口测试,连续调 6 次 reroll,比对餐厅 ID。</span></div></li>
+    <li><span class="box"></span><div><b>高风险店从不出现</b>——风险分 61+ 的店在任何一次 reroll 里都见不到。<span class="how">验法:构造一家刷评特征明显的店,确认 6 次都不出现;也确认风险分/理由由服务端给出、前端只是展示。</span></div></li>
+    <li><span class="box"></span><div><b>结果可复现(v0.3 已修复)</b>--随机种子已随推荐日志落库(recommendation_log.random_seed),同 seed + 同输入可确定性重放候选池。<span class="how">验法:SQL 查 random_seed 非空;引擎层同输入同 seed 两次调用,候选池一致(已有单测覆盖)。</span></div></li>
+    <li><span class="box"></span><div><b>口味偏好随反馈移动</b>——对同一品类连给 3 次 👎 后,该品类在下次推荐里明显靠后或消失;长时间不给反馈后逐渐恢复。<span class="how">验法:反馈前后各请求一次推荐,对比候选品类构成。</span></div></li>
+    <li><span class="box"></span><div><b>"不想吃"关键词已改为精确品类匹配 + 软降权(v0.3)</b>--填"面"不再误杀"面对面";只有与品类名称精确一致(如"蛋糕甜品")才硬剔除,命中店名改为打分降权 −10。<span class="how">验法:构造名字含关键词子串的店,确认不被剔除且分数降低(HardFilterTest / LowRegretScorerTest 已覆盖)。</span></div></li>
+    <li><span class="box"></span><div><b>安全红线都在服务端</b>——高德 Key、POI 原始数据、风险算法细节不出现在任何接口响应里;前端只拿到最终结果、风险等级/理由、推荐理由和两个算法版本号。<span class="how">验法:抓三个接口的响应包,对照 contracts/openapi.yaml 字段逐个核对。</span></div></li>
+    <li><span class="box"></span><div><b>每次推荐都有留痕</b>——每次请求的条件、候选数、首推餐厅、两个算法版本、分数都落了 recommendation_log,以后可以对比不同风险算法版本的踩坑率。<span class="how">验法:请求一次推荐,查库确认日志记录齐全。</span></div></li>
+  </ul>
+</div>
+
+<div class="sub" style="margin-top:28px">本页由代码审查生成,数字均取自后端默认配置;配置改动后需同步更新此页。生成日期 2026-08-22。</div>
+
+<script>
+/* ================= 第二节:权重条形图 ================= */
+const W = [
+  { name: "评分", sub: "大众点评星级越高越好", w: 25, c: "#4fc3f7" },
+  { name: "距离", sub: "越近越好(按步行时间,与半径无关)", w: 20, c: "#4fc3f7" },
+  { name: "风险", sub: "越安全越好(五个危险信号)", w: 20, c: "#4fc3f7" },
+  { name: "预算", sub: "越便宜越好(但不唯便宜)", w: 15, c: "#4fc3f7" },
+  { name: "品类", sub: "明确点品类比随便看看略加分", w: 10, c: "#7ea8c9" },
+  { name: "信息完整度", sub: "评分/评价/营业时间/价格齐全加分", w: 10, c: "#7ea8c9" },
+];
+document.getElementById("weights").innerHTML = W.map(x =>
+  `<div class="wbar-row">
+     <div class="wbar-label">${x.name}<small>${x.sub}</small></div>
+     <div class="wbar-track"><div class="wbar-fill" style="width:${x.w*4.4}%;background:${x.c}">${x.w} 分</div></div>
+   </div>`).join("") +
+  `<div class="wbar-row">
+     <div class="wbar-label" style="color:var(--orange)">口味调整<small>你过去的 👍👎,额外叠加</small></div>
+     <div class="wbar-track"><div class="wbar-fill" style="width:66%;background:#ffb74d;color:#3a2a00">最多 ±15 分</div></div>
+   </div>`;
+
+/* ================= 第三节:风险五信号 ================= */
+const R = [
+  { name: "数据不足", w: 25, say: "查无此店、评论太少、连营业时间都没有——占 1/4 权重" },
+  { name: "评分本身", w: 25, say: "低于 4.0 分直接危险 60 分起步,没评分直接 100 分" },
+  { name: "疑似刷评", w: 20, say: "评论互相抄袭(像是一个模子刻的)——占比超 1 成开始计分,过半封顶" },
+  { name: "评论扎堆", w: 15, say: "评论集中在少数几天(像冲榜刷出来的)" },
+  { name: "口碑下滑", w: 15, say: "近 30 天比之前 90 天变差,越差扣越多(连续函数,样本少自动收缩)" },
+];
+document.getElementById("riskfactors").innerHTML = R.map(x =>
+  `<div class="wbar-row">
+     <div class="wbar-label">${x.name}<small>权重 ${x.w}%</small></div>
+     <div class="wbar-track"><div class="wbar-fill" style="width:${x.w*3.6}%;background:#e57373;color:#2b0d0d">${x.w}%</div></div>
+     <div style="flex-basis:100%;font-size:12px;color:var(--muted)">${x.say}</div>
+   </div>`).join("");
+
+/* ================= 第五节:计算器 ================= */
+const $ = id => document.getElementById(id);
+const WS = { rating: 25, distance: 20, budget: 15, category: 10, completeness: 10, risk: 20 };
+const UNC = 50, COMP = { FULL: 1.0, PARTIAL: 0.6, MINIMAL: 0.3 };
+
+function calc() {
+  const rating = +$("in-rating").value, dist = +$("in-dist").value, radius = +$("in-radius").value;
+  const budget = +$("in-budget").value, price = +$("in-price").value;
+  const cat = $("in-cat").value, comp = $("in-comp").value;
+  const risk = +$("in-risk").value, conf = +$("in-conf").value, taste = +$("in-taste").value;
+
+  const fRating = Math.max(0, Math.min(1, rating / 5));
+  const fDist = 10 / (10 + dist / 80);  // 步行时间饱和函数,与 radius 解耦
+  let fBudget;
+  if (budget === 0) fBudget = 0.8;
+  else if (price === 0) fBudget = 0.5;
+  else if (price > budget) fBudget = 0.0;
+  else fBudget = 1 - 0.5 * price / budget;
+  const fCat = cat === "ANY" ? 0.9 : 1.0;
+  const fComp = COMP[comp];
+  const effRisk = conf * risk + (1 - conf) * UNC;
+  const fRisk = 1 - Math.max(0, Math.min(100, effRisk)) / 100;
+
+  const parts = [
+    ["rating", "评分", fRating], ["distance", "距离", fDist], ["budget", "预算", fBudget],
+    ["category", "品类", fCat], ["completeness", "信息完整度", fComp], ["risk", "安全", fRisk],
+  ];
+  const base = parts.reduce((s, p) => s + WS[p[0]] * p[2], 0);
+  const adj = taste >= 0 ? taste * (100 - base) / 100 : taste * base / 100;
+  const raw = base + adj;
+  const score = Math.max(0, Math.min(100, raw));
+
+  const reasons = [];
+  if (fDist >= 0.6) reasons.push("距离近");
+  if (budget > 0 && fBudget >= 0.8) reasons.push("预算合适");
+  if (rating >= 4.2) reasons.push("评分稳定");
+  if (comp === "FULL") reasons.push("数据完整度较高");
+  if (risk <= 20) reasons.push("踩坑风险低");
+  if (taste >= 3) reasons.push("符合你的历史口味");
+  if (!reasons.length) reasons.push("综合匹配度较高");
+
+  return { rating, dist, radius, budget, price, comp, risk, conf, taste,
+           parts, base, raw, score, effRisk, fRisk, fBudget, reasons };
+}
+
+function render() {
+  const f = calc();
+  $("v-rating").textContent = f.rating.toFixed(1);
+  $("v-dist").textContent = f.dist + " m";
+  $("v-radius").textContent = f.radius + " m";
+  $("v-budget").textContent = f.budget === 0 ? "不限" : f.budget + " 元";
+  $("v-price").textContent = f.price === 0 ? "未知" : f.price + " 元";
+  $("v-risk").textContent = f.risk;
+  $("v-conf").textContent = f.conf.toFixed(2);
+  $("v-taste").textContent = (f.taste >= 0 ? "+" : "") + f.taste;
+
+  // 判定框
+  const v = $("out-verdict");
+  if (f.risk > 60) {
+    v.className = "verdict no";
+    v.innerHTML = `<span class="big">⛔ 这家店不会被推荐</span><br>风险分 ${f.risk} 超过 60,在第二关就被踢出局,连备胎池都进不了。<span class="muted">(它的总分 ${f.score.toFixed(1)} 再高也没用。)</span>`;
+  } else if (f.price > f.budget && f.budget > 0) {
+    v.className = "verdict no";
+    v.innerHTML = `<span class="big">⛔ 超预算,第一关就被砍掉</span><br>人均 ${f.price} 元 > 你的预算 ${f.budget} 元,硬过滤直接剔除。`;
+  } else if (f.dist > f.radius) {
+    v.className = "verdict no";
+    v.innerHTML = `<span class="big">⛔ 太远了,第一关就被砍掉</span><br>距离 ${f.dist} m > 搜索半径 ${f.radius} m。`;
+  } else {
+    v.className = "verdict yes";
+    v.innerHTML = `<span class="big">✅ 可以参与推荐,总分 ${f.score.toFixed(1)} 分</span><br>分数越高排越前,也更容易被抽进那 6 家候选池。<span class="muted">这是"低后悔分",不是百分制满意度。</span>`;
+  }
+
+  $("factors").innerHTML = f.parts.map(p => {
+    const pct = Math.max(0, Math.min(100, p[2] * 100));
+    return `<div class="fbar-row">
+      <span class="fbar-name">${p[1]}<small>满分 ${WS[p[0]]} 分</small></span>
+      <div class="fbar-bg"><div class="fbar" style="width:${pct}%"></div></div>
+      <span class="fbar-val">拿了 ${(WS[p[0]]*p[2]).toFixed(1)} / ${WS[p[0]]}</span>
+    </div>`;
+  }).join("") + `<div class="fbar-row">
+      <span class="fbar-name">口味调整<small>最多 ±15 分</small></span>
+      <div class="fbar-bg"><div class="fbar ${f.taste<0?'neg':''}" style="width:${Math.abs(f.taste)/15*100}%"></div></div>
+      <span class="fbar-val">${f.taste>=0?"+":""}${f.taste.toFixed(1)} 分</span>
+    </div>`;
+
+  $("out-formula").textContent =
+`(给开发核对用)
+有效风险 = ${f.conf.toFixed(2)} × ${f.risk} + ${(1-f.conf).toFixed(2)} × 50 = ${f.effRisk.toFixed(1)}
+六项合计 ${f.base.toFixed(2)} ${f.taste>=0?"+":""}${f.taste} → 截断到 0~100 → ${f.score.toFixed(1)} 分`;
+
+  $("out-reasons").innerHTML = `<div class="say" style="margin-top:12px">💬 用户看到的推荐理由:<b>${f.reasons.join("</b> · <b>")}</b></div>`;
+
+  // 风险仪表盘联动
+  const needle = $("risk-needle");
+  needle.style.transform = `rotate(${-90 + f.risk * 1.8}deg)`;
+  const lvl = f.risk <= 20 ? ["放心吃","var(--green)"] : f.risk <= 40 ? ["留个心眼","var(--yellow)"] : f.risk <= 60 ? ["有点悬","var(--orange)"] : ["危险 ⛔","var(--red)"];
+  const g = $("gauge-lvl");
+  g.textContent = `${f.risk} ${lvl[0]}`;
+  g.style.color = lvl[1];
+}
+
+["in-rating","in-dist","in-radius","in-budget","in-price","in-cat","in-comp","in-risk","in-conf","in-taste"]
+  .forEach(id => $(id).addEventListener("input", render));
+render();
+</script>
+
+</body>
+</html>

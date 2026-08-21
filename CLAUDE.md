@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 仓库现状
 
-这是「ELMA 家今天的饭」前后端仓库。当前版本为 V0.2.0：保留 V0.12 的默认正餐、四类筛选、候选多样化和最多 5 次重新选择，新增 File Evidence、`risk-v0.2` 与 TasteProfile 闭环。接口事实源是 [contracts/openapi.yaml](contracts/openapi.yaml)，当前增量规则见 [docs/V0.2-evidence-risk-and-taste.md](docs/V0.2-evidence-risk-and-taste.md)。
+这是「ELMA 家今天的饭」前后端仓库。接口仍为 V0.2，当前排序与风险算法为 `recommendation-v0.3` / `risk-v0.3`：保留默认正餐、四类筛选、候选多样化和最多 5 次重新选择，并提供 File Evidence 与 TasteProfile 闭环。接口事实源是 [contracts/openapi.yaml](contracts/openapi.yaml)，当前算法增量规则见 [docs/recommendation-algorithm-notes.md](docs/recommendation-algorithm-notes.md)。
 
 两份方案文档（`elma-gohan_V0.1_Demo_技术与产品方案.md`、`elma-gohan产品介绍.md`）是项目起点，不得覆盖或重写。
 
@@ -59,7 +59,7 @@ cd backend && mvn test
 
 - `PoiProvider`（V0.1 实现 `AmapPoiProvider`）— 附近餐厅查询；第三方数据必须先转成内部 `Restaurant` 标准模型（含 `sourcePoiId`、`dataCompleteness` 等），原始结构不得进入业务核心。
 - `EvidenceProvider` — `FileEvidenceProvider` 默认启用，第三方 DTO 必须映射成统一 `RestaurantEvidence`；失败逐餐厅降级，`EmptyEvidenceProvider` 保留作 fallback。
-- `RiskEngine` — `risk-v0.2` 可配置规则模型（非 ML），输出五项 factors、`riskScore`(0~100)、`riskLevel`、`confidence`、`reasons[]` 和版本；高风险项（61+）不主动推荐。
+- `RiskEngine` — `risk-v0.3` 可配置规则模型（非 ML），输出五项 factors、`riskScore`(0~100)、`riskLevel`、`confidence`、`reasons[]` 和版本；高风险项（61+）不主动推荐。
 - `RecommendationEngine` — 硬过滤 → Evidence/Risk → 高风险剔除 → LowRegretScore（含可信度校正与 TasteProfile）→ Top-10 多样化 → 有限加权随机 → 最多 6 家候选池。
 
 推荐流程：定位 → POI 获取 → 硬过滤 → Evidence → Risk → 高风险过滤 → 排序 → 主动推荐一家 → 反馈更新画像。每次推荐必须落 `recommendation_log`（请求条件快照、候选数、首次推荐餐厅、两种算法版本、分数），用于后续比较不同 RiskEngine 版本的踩坑率。数据库用 Flyway 建表，核心表：`restaurant`、`risk_result`、`recommendation_log`、`recommendation_candidate`、`user_feedback`、`user_preference`。

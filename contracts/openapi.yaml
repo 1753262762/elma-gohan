@@ -261,7 +261,7 @@ components:
           riskLevel: LOW
           confidence: 0.82
           reasons: [评分稳定, 店铺信息完整, 价格位于正常范围]
-          algorithmVersion: risk-v0.2
+          algorithmVersion: risk-v0.3
         reasons: [距离近, 预算合适, 基础评分稳定, 数据完整度较高]
         alternativesRemaining: 5
 
@@ -375,7 +375,7 @@ components:
             type: string
         algorithmVersion:
           type: string
-          example: risk-v0.2
+          example: risk-v0.3
 
     SubmitFeedbackRequest:
       type: object

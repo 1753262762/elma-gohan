@@ -2,11 +2,11 @@ package com.elma.gohan.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-/** risk-v0.2 的全部阈值与权重，规则实现中不保留业务数字。 */
+/** risk-v0.3 的全部阈值与权重，规则实现中不保留业务数字。 */
 @ConfigurationProperties(prefix = "elma.risk")
 public class RiskProperties {
 
-    private String algorithmVersion = "risk-v0.2";
+    private String algorithmVersion = "risk-v0.3";
     private Rating rating = new Rating();
     private Template template = new Template();
     private Burst burst = new Burst();
@@ -16,6 +16,10 @@ public class RiskProperties {
     private Weights weights = new Weights();
     private Levels levels = new Levels();
     private double priceAnomalyRatio = 1.5;
+    /** 价格异常基线按品类组计算时,组内最少样本量;不足则不触发异常加分。 */
+    private int priceAnomalyMinPoolSize = 5;
+    /** trend 连续风险函数按样本量收缩时的目标样本数。 */
+    private int trendTargetSample = 30;
 
     public String getAlgorithmVersion() { return algorithmVersion; }
     public void setAlgorithmVersion(String v) { algorithmVersion = v; }
@@ -37,6 +41,10 @@ public class RiskProperties {
     public void setLevels(Levels v) { levels = v; }
     public double getPriceAnomalyRatio() { return priceAnomalyRatio; }
     public void setPriceAnomalyRatio(double v) { priceAnomalyRatio = v; }
+    public int getPriceAnomalyMinPoolSize() { return priceAnomalyMinPoolSize; }
+    public void setPriceAnomalyMinPoolSize(int v) { priceAnomalyMinPoolSize = v; }
+    public int getTrendTargetSample() { return trendTargetSample; }
+    public void setTrendTargetSample(int v) { trendTargetSample = v; }
 
     public static class Rating {
         private double fairMin = 4.0;
@@ -177,12 +185,16 @@ public class RiskProperties {
         private double poiWeight = 0.25;
         private double evidenceWeight = 0.75;
         private int targetReviews = 30;
+        /** 证据新鲜度窗口(天):窗口内评论占比作为 confidence 的乘数。 */
+        private int freshnessWindowDays = 120;
         public double getPoiWeight() { return poiWeight; }
         public void setPoiWeight(double v) { poiWeight = v; }
         public double getEvidenceWeight() { return evidenceWeight; }
         public void setEvidenceWeight(double v) { evidenceWeight = v; }
         public int getTargetReviews() { return targetReviews; }
         public void setTargetReviews(int v) { targetReviews = v; }
+        public int getFreshnessWindowDays() { return freshnessWindowDays; }
+        public void setFreshnessWindowDays(int v) { freshnessWindowDays = v; }
     }
 
     public static class Weights {

@@ -33,7 +33,7 @@ function recommendation(restaurantId: string, name: string, alternativesRemainin
       riskLevel: 'LOW',
       confidence: 0.82,
       reasons: ['评分稳定'],
-      algorithmVersion: 'risk-v0.2',
+      algorithmVersion: 'risk-v0.3',
     },
     reasons: ['距离近'],
     alternativesRemaining,

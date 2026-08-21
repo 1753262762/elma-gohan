@@ -10,6 +10,8 @@ import com.elma.gohan.domain.restaurant.Restaurant;
 import com.elma.gohan.domain.restaurant.SearchCondition;
 import com.elma.gohan.domain.risk.RiskLevel;
 import com.elma.gohan.domain.risk.RiskResult;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -25,7 +27,7 @@ class DefaultRecommendationEngineTest {
     private Map<String, RiskResult> risks(List<Restaurant> restaurants) {
         return restaurants.stream().collect(Collectors.toMap(
                 Restaurant::sourcePoiId,
-                r -> new RiskResult(10, RiskLevel.LOW, List.of("评分稳定"), "risk-v0.2")));
+                r -> new RiskResult(10, RiskLevel.LOW, List.of("评分稳定"), "risk-v0.3")));
     }
 
     @Test
@@ -35,11 +37,55 @@ class DefaultRecommendationEngineTest {
                 .mapToObj(i -> TestRestaurants.full("p" + i, 4.0 + i * 0.05, 200 + i * 10))
                 .toList();
         var result = engine.recommend(restaurants, risks(restaurants),
-                new UserPreference(new SearchCondition(1000, null, "ANY", List.of())));
+                new UserPreference(new SearchCondition(1000, null, "ANY", List.of())), 1L);
         assertThat(result.pool()).hasSize(6);
         assertThat(result.pool()).extracting(c -> c.restaurant().sourcePoiId())
                 .doesNotHaveDuplicates();
-        assertThat(result.algorithmVersion()).isEqualTo("recommendation-v0.2");
+        assertThat(result.algorithmVersion()).isEqualTo("recommendation-v0.3");
+    }
+
+    @Test
+    @DisplayName("相同 seed 相同输入 -> 候选池可确定性重放")
+    void sameSeedProducesSamePool() throws Exception {
+        List<Restaurant> restaurants = java.util.stream.IntStream.rangeClosed(1, 8)
+                .mapToObj(i -> TestRestaurants.full("p" + i, 4.0 + i * 0.05, 200 + i * 10))
+                .toList();
+        var risks = risks(restaurants);
+        var preference = new UserPreference(new SearchCondition(1000, null, "ANY", List.of()));
+        var first = engine.recommend(restaurants, risks, preference, 42L);
+        var second = engine.recommend(restaurants, risks, preference, 42L);
+        var other = engine.recommend(restaurants, risks, preference, 43L);
+        assertThat(first.pool()).extracting(c -> c.restaurant().sourcePoiId())
+                .containsExactlyElementsOf(second.pool().stream()
+                        .map(c -> c.restaurant().sourcePoiId()).toList());
+        // 不同 seed 时池内顺序通常不同(不强制断言不同,避免脆弱)
+        assertThat(other.pool()).hasSize(first.pool().size());
+        assertThat(first.randomSeed()).isEqualTo(42L);
+        String persistedJson = new ObjectMapper().writeValueAsString(first.selectionSnapshot());
+        List<SelectionCandidate> restoredSnapshot = new ObjectMapper().readValue(
+                persistedJson, new TypeReference<List<SelectionCandidate>>() { });
+        assertThat(engine.replaySelection(restoredSnapshot, first.pool().size(),
+                first.randomSeed())).extracting(SelectionCandidate::sourcePoiId)
+                .containsExactlyElementsOf(first.pool().stream()
+                        .map(candidate -> candidate.restaurant().sourcePoiId()).toList());
+    }
+
+    @Test
+    @DisplayName("同分候选即使输入顺序变化也可稳定重放")
+    void equalScoresUseStableTieBreaker() {
+        List<Restaurant> ordered = java.util.stream.IntStream.rangeClosed(1, 8)
+                .mapToObj(i -> TestRestaurants.full("p" + i, 4.5, 300))
+                .toList();
+        List<Restaurant> reversed = new java.util.ArrayList<>(ordered);
+        java.util.Collections.reverse(reversed);
+        var preference = new UserPreference(new SearchCondition(1000, null, "ANY", List.of()));
+
+        var first = engine.recommend(ordered, risks(ordered), preference, 99L);
+        var second = engine.recommend(reversed, risks(reversed), preference, 99L);
+
+        assertThat(first.pool()).extracting(candidate -> candidate.restaurant().sourcePoiId())
+                .containsExactlyElementsOf(second.pool().stream()
+                        .map(candidate -> candidate.restaurant().sourcePoiId()).toList());
     }
 
     @Test
@@ -57,7 +103,7 @@ class DefaultRecommendationEngineTest {
                 categoryRestaurant("d3", "DRINKS", 4.7));
 
         var result = engine.recommend(restaurants, risks(restaurants),
-                new UserPreference(new SearchCondition(1000, null, "ANY", List.of())));
+                new UserPreference(new SearchCondition(1000, null, "ANY", List.of())), 2L);
 
         Map<String, Long> counts = result.pool().stream().collect(Collectors.groupingBy(
                 candidate -> com.elma.gohan.domain.restaurant.CategoryFilter.groupCodeForRestaurant(
@@ -74,10 +120,10 @@ class DefaultRecommendationEngineTest {
         Restaurant good = TestRestaurants.full("good", 4.6, 200);
         Restaurant bad = TestRestaurants.full("bad", 4.6, 200);
         var risks = Map.of(
-                "good", new RiskResult(10, RiskLevel.LOW, List.of("评分稳定"), "risk-v0.2"),
-                "bad", new RiskResult(80, RiskLevel.HIGH, List.of("评分偏低"), "risk-v0.2"));
+                "good", new RiskResult(10, RiskLevel.LOW, List.of("评分稳定"), "risk-v0.3"),
+                "bad", new RiskResult(80, RiskLevel.HIGH, List.of("评分偏低"), "risk-v0.3"));
         var result = engine.recommend(List.of(good, bad), risks,
-                new UserPreference(new SearchCondition(1000, null, "ANY", List.of())));
+                new UserPreference(new SearchCondition(1000, null, "ANY", List.of())), 3L);
         assertThat(result.pool()).extracting(c -> c.restaurant().sourcePoiId()).containsExactly("good");
     }
 
@@ -86,7 +132,7 @@ class DefaultRecommendationEngineTest {
     void emptyWhenAllFiltered() {
         Restaurant far = TestRestaurants.full("far", 4.5, 5000);
         var result = engine.recommend(List.of(far), risks(List.of(far)),
-                new UserPreference(new SearchCondition(1000, null, "ANY", List.of())));
+                new UserPreference(new SearchCondition(1000, null, "ANY", List.of())), 4L);
         assertThat(result.pool()).isEmpty();
     }
 
@@ -96,7 +142,7 @@ class DefaultRecommendationEngineTest {
         List<Restaurant> two = List.of(TestRestaurants.full("a", 4.5, 100),
                 TestRestaurants.full("b", 4.5, 200));
         var result = engine.recommend(two, risks(two),
-                new UserPreference(new SearchCondition(1000, null, "ANY", List.of())));
+                new UserPreference(new SearchCondition(1000, null, "ANY", List.of())), 5L);
         assertThat(result.pool()).hasSize(2);
     }
 

@@ -1,6 +1,7 @@
 package com.elma.gohan.application;
 
 import com.elma.gohan.config.RecommendationProperties;
+import com.elma.gohan.config.RiskProperties;
 import com.elma.gohan.controller.api.CreateRecommendationRequest;
 import com.elma.gohan.controller.api.FeedbackResponse;
 import com.elma.gohan.controller.api.RecommendationResponse;
@@ -41,6 +42,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -65,6 +67,7 @@ public class RecommendationService {
     private final HardFilter hardFilter;
     private final TasteProfileService tasteProfileService;
     private final RecommendationProperties recommendationProperties;
+    private final RiskProperties riskProperties;
     private final RestaurantRepository restaurantRepository;
     private final RiskResultRepository riskResultRepository;
     private final RecommendationLogRepository logRepository;
@@ -76,6 +79,7 @@ public class RecommendationService {
                                  RiskEngine riskEngine, RecommendationEngine recommendationEngine,
                                  HardFilter hardFilter, TasteProfileService tasteProfileService,
                                  RecommendationProperties recommendationProperties,
+                                 RiskProperties riskProperties,
                                  RestaurantRepository restaurantRepository,
                                  RiskResultRepository riskResultRepository,
                                  RecommendationLogRepository logRepository,
@@ -89,6 +93,7 @@ public class RecommendationService {
         this.hardFilter = hardFilter;
         this.tasteProfileService = tasteProfileService;
         this.recommendationProperties = recommendationProperties;
+        this.riskProperties = riskProperties;
         this.restaurantRepository = restaurantRepository;
         this.riskResultRepository = riskResultRepository;
         this.logRepository = logRepository;
@@ -119,19 +124,23 @@ public class RecommendationService {
             throw new NoRecommendationAvailableException("附近暂时没有符合条件的餐厅,请放宽距离或预算");
         }
 
-        double poolAvgPrice = eligible.stream()
-                .filter(r -> r.averagePrice() != null)
-                .mapToInt(Restaurant::averagePrice)
-                .average().orElse(0);
+        // 价格异常基线按品类组取中位数;组内样本不足时不提供基线(不触发异常加分),
+        // 避免品类天然价差(如日料混入小吃候选)被误判为价格异常。
+        Map<String, Double> baselineByGroup = PriceBaselineCalculator.byCategoryGroup(
+                eligible, riskProperties.getPriceAnomalyMinPoolSize());
         Map<String, RiskResult> risks = riskEngine.evaluateAll(
                 eligible, r -> {
                     RestaurantEvidence evidence = safeEvidence(r);
-                    return poolAvgPrice > 0 ? evidence.withPoolAveragePrice(poolAvgPrice) : evidence;
+                    Double baseline = baselineByGroup.get(
+                            PriceBaselineCalculator.groupKey(r));
+                    return baseline != null ? evidence.withPoolAveragePrice(baseline) : evidence;
                 });
 
+        // 随机种子生成并落库:同 seed + 同输入可确定性重放候选池(审计 P1-1)。
+        long randomSeed = nextNonZeroSeed();
         RecommendationResult result = recommendationEngine.recommend(
                 eligible, risks, new com.elma.gohan.domain.recommendation.UserPreference(
-                        condition, tasteProfileService.load(anonymousUserId)));
+                        condition, tasteProfileService.load(anonymousUserId)), randomSeed);
         if (result.pool().isEmpty()) {
             throw new NoRecommendationAvailableException("附近暂时没有符合条件的餐厅,请放宽距离或预算");
         }
@@ -165,7 +174,8 @@ public class RecommendationService {
                 logId, anonymousUserId, toJson(conditionSnapshot),
                 persisted.size(), first.restaurant().id(), first.restaurant().id(),
                 first.risk().riskScore(), first.lowRegretScore(),
-                first.risk().algorithmVersion(), result.algorithmVersion(), now));
+                first.risk().algorithmVersion(), result.algorithmVersion(), result.randomSeed(),
+                toJson(result.selectionSnapshot()), now));
 
         for (int i = 0; i < persisted.size(); i++) {
             RestaurantCandidate candidate = persisted.get(i);
@@ -324,5 +334,13 @@ public class RecommendationService {
             log.warn("EvidenceProvider 获取失败，餐厅 {} 已降级", restaurant.sourcePoiId(), exception);
             return RestaurantEvidence.unavailable("PROVIDER");
         }
+    }
+
+    private long nextNonZeroSeed() {
+        long seed;
+        do {
+            seed = ThreadLocalRandom.current().nextLong();
+        } while (seed == 0L);
+        return seed;
     }
 }

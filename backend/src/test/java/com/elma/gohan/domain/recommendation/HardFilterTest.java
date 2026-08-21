@@ -74,13 +74,20 @@ class HardFilterTest {
     }
 
     @Test
-    @DisplayName("dislikes:命中名称或品类 label 剔除")
+    @DisplayName("dislikes:品类 label/code 归一化精确命中剔除;名称子串命中不剔除(交由打分软降权)")
     void dislikeFilter() {
-        var beefNoodle = TestRestaurants.full("a", "老街牛肉粉", 4.5, 300, 30);
+        var noodles = TestRestaurants.full("a", "面对面餐厅", 4.5, 300, 30);
         var dessert = new Restaurant(null, "AMAP", "b", "甜品店", 28.0, 112.0, 300,
                 "DESSERT", "蛋糕甜品", 4.5, 100, 30,
                 BusinessStatus.UNKNOWN, "09:00-21:00", "地址", com.elma.gohan.domain.restaurant.DataCompleteness.FULL);
-        assertThat(filter.filter(List.of(beefNoodle, dessert), condition(1000, null, "ANY", List.of("牛肉", "香菜"))))
-                .extracting(Restaurant::sourcePoiId).containsExactly("b");
+        // "面"只命中名称子串,不再硬剔除(修复"面"误杀"面对面")
+        assertThat(filter.filter(List.of(noodles), condition(1000, null, "ANY", List.of("面"))))
+                .extracting(Restaurant::sourcePoiId).containsExactly("a");
+        // 归一化后与品类 label 精确一致才剔除
+        assertThat(filter.filter(List.of(dessert), condition(1000, null, "ANY", List.of(" 蛋糕甜品 "))))
+                .isEmpty();
+        // 或等于品类 code(大小写不敏感)
+        assertThat(filter.filter(List.of(dessert), condition(1000, null, "ANY", List.of("dessert"))))
+                .isEmpty();
     }
 }

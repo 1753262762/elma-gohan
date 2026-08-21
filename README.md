@@ -1,10 +1,10 @@
 # ELMA 家今天的饭 V0.2
 
-LowRegret V0.2 是 Java 模块化单体后端与 uni-app 微信小程序前端。V0.2 在已验收的 V0.12 筛选与 5 次 reroll 上加入外部 Evidence 去水、`risk-v0.2` 和用户反馈画像闭环。产品仍只返回一家主推荐，接口事实源是 [`contracts/openapi.yaml`](contracts/openapi.yaml)，数据流与规则见 [`docs/V0.2-evidence-risk-and-taste.md`](docs/V0.2-evidence-risk-and-taste.md)。
+LowRegret API V0.2 是 Java 模块化单体后端与 uni-app 微信小程序前端，当前排序与风险算法为 `recommendation-v0.3` / `risk-v0.3`。系统保留 V0.12 筛选与最多 5 次 reroll，并提供外部 Evidence 去水和用户反馈画像闭环。产品仍只返回一家主推荐，接口事实源是 [`contracts/openapi.yaml`](contracts/openapi.yaml)，v0.3 算法增量见 [`docs/recommendation-algorithm-notes.md`](docs/recommendation-algorithm-notes.md)。
 
 ## 环境
 
-- Node.js 22 LTS
+- Node.js 22.13+ LTS
 - pnpm 11
 - 微信开发者工具（真机验收时需要 AppID）
 

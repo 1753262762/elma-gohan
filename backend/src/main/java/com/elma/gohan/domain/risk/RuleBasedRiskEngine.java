@@ -5,6 +5,9 @@ import com.elma.gohan.domain.restaurant.Restaurant;
 import com.elma.gohan.provider.evidence.EvidenceStatus;
 import com.elma.gohan.provider.evidence.RestaurantEvidence;
 import com.elma.gohan.provider.evidence.ReviewEvidence;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -12,7 +15,12 @@ import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-/** risk-v0.2：基础评分、评论模板、时间突发、近期趋势和数据不足的透明规则模型。 */
+/**
+ * risk-v0.3:基础评分、评论模板、时间突发、近期趋势和数据不足的透明规则模型。
+ *
+ * v0.3 变更:confidence 纳入证据新鲜度(新鲜度窗口内评论占比作为乘数);
+ * trend 风险由离散悬崖改为连续函数(超阈幅度 × 样本量收缩)。
+ */
 @Component
 public class RuleBasedRiskEngine implements RiskEngine {
 
@@ -20,23 +28,33 @@ public class RuleBasedRiskEngine implements RiskEngine {
     private final TemplateCommentDetector templateDetector;
     private final ReviewBurstDetector burstDetector;
     private final RecentTrendDetector trendDetector;
+    private final Clock clock;
 
     @Autowired
     public RuleBasedRiskEngine(RiskProperties properties,
                                TemplateCommentDetector templateDetector,
                                ReviewBurstDetector burstDetector,
                                RecentTrendDetector trendDetector) {
-        this.properties = properties;
-        this.templateDetector = templateDetector;
-        this.burstDetector = burstDetector;
-        this.trendDetector = trendDetector;
+        this(properties, templateDetector, burstDetector, trendDetector, Clock.systemUTC());
     }
 
     /** 便于纯单元测试使用默认轻量分析器。 */
     public RuleBasedRiskEngine(RiskProperties properties) {
         this(properties, new JaccardTemplateCommentDetector(properties),
                 new SlidingWindowBurstDetector(properties),
-                new RuleBasedRecentTrendDetector(properties));
+                new RuleBasedRecentTrendDetector(properties), Clock.systemUTC());
+    }
+
+    public RuleBasedRiskEngine(RiskProperties properties,
+                               TemplateCommentDetector templateDetector,
+                               ReviewBurstDetector burstDetector,
+                               RecentTrendDetector trendDetector,
+                               Clock clock) {
+        this.properties = properties;
+        this.templateDetector = templateDetector;
+        this.burstDetector = burstDetector;
+        this.trendDetector = trendDetector;
+        this.clock = clock;
     }
 
     @Override
@@ -54,15 +72,10 @@ public class RuleBasedRiskEngine implements RiskEngine {
         BurstDetectionResult burst = burstDetector.detect(evidence.reviews());
         if (burst.burstRisk() > 0) reasons.add("评论在少数日期异常集中");
 
-        RecentTrend trend = trendDetector.detect(evidence.reviews());
-        int trendRisk = switch (trend) {
-            case UP -> properties.getTrend().getUpRisk();
-            case STABLE -> properties.getTrend().getStableRisk();
-            case DOWN -> properties.getTrend().getDownRisk();
-            case UNKNOWN -> properties.getTrend().getUnknownRisk();
-        };
-        if (trend == RecentTrend.DOWN) reasons.add("近期口碑较历史明显下降");
-        if (trend == RecentTrend.UP) reasons.add("近期口碑有所改善");
+        TrendResult trend = trendDetector.detect(evidence.reviews());
+        int trendRisk = trendRisk(trend);
+        if (trend.trend() == RecentTrend.DOWN) reasons.add("近期口碑较历史明显下降");
+        if (trend.trend() == RecentTrend.UP) reasons.add("近期口碑有所改善");
 
         int insufficientRisk = dataInsufficientRisk(restaurant, evidence, reasons);
         RiskFactors factors = new RiskFactors(ratingRisk, templateRisk, burst.burstRisk(),
@@ -71,7 +84,7 @@ public class RuleBasedRiskEngine implements RiskEngine {
         double confidence = confidence(restaurant, evidence);
 
         if (evidence.status() == EvidenceStatus.AVAILABLE && templateRisk == 0
-                && burst.burstRisk() == 0 && trend != RecentTrend.DOWN) {
+                && burst.burstRisk() == 0 && trend.trend() != RecentTrend.DOWN) {
             reasons.add("未发现明显评论异常");
         }
         if (reasons.isEmpty()) reasons.add("现有数据未发现明显风险");
@@ -80,6 +93,25 @@ public class RuleBasedRiskEngine implements RiskEngine {
 
         return new RiskResult(score, levelOf(score), confidence, factors,
                 visibleReasons, properties.getAlgorithmVersion());
+    }
+
+    /**
+     * 趋势连续风险:stable 与 down 之间按超阈幅度(severity)线性插值,
+     * 并按两窗口实际样本量相对目标样本收缩,小样本波动不会直接触发顶格风险。
+     */
+    private int trendRisk(TrendResult trend) {
+        RiskProperties.Trend config = properties.getTrend();
+        int target = Math.max(1, properties.getTrendTargetSample());
+        double sampleRatio = Math.min(1.0,
+                Math.min(trend.recentCount(), trend.baselineCount()) / (double) target);
+        return switch (trend.trend()) {
+            case UP -> config.getUpRisk();
+            case STABLE -> config.getStableRisk();
+            case DOWN -> clamp((int) Math.round(
+                    config.getStableRisk() + (config.getDownRisk() - config.getStableRisk())
+                            * trend.severity() * sampleRatio));
+            case UNKNOWN -> config.getUnknownRisk();
+        };
     }
 
     private int ratingRisk(Restaurant restaurant, Set<String> reasons) {
@@ -167,11 +199,35 @@ public class RuleBasedRiskEngine implements RiskEngine {
             double text = coverage(reviews, r -> r.text() != null && !r.text().isBlank());
             double rating = coverage(reviews, r -> r.rating() != null);
             double time = coverage(reviews, r -> r.createdAt() != null);
-            evidenceConfidence = volume * (text + rating + time) / 3.0;
+            double freshness = freshness(evidence, config.getFreshnessWindowDays());
+            evidenceConfidence = volume * (text + rating + time) / 3.0 * freshness;
         }
         double value = config.getPoiWeight() * poi
                 + config.getEvidenceWeight() * evidenceConfidence;
         return Math.round(Math.max(0.0, Math.min(1.0, value)) * 1000.0) / 1000.0;
+    }
+
+    /**
+     * 新鲜度 = 窗口内且不晚于当前时刻的评论占比 × Evidence 抓取时间新鲜度。
+     * 缺失、过期或未来 fetchedAt 均视为不可证明当前证据仍新鲜。
+     */
+    private double freshness(RestaurantEvidence evidence, int windowDays) {
+        if (windowDays <= 0) {
+            return 1.0;
+        }
+        Instant now = clock.instant();
+        Instant windowStart = now.minus(windowDays, ChronoUnit.DAYS);
+        long fresh = evidence.reviews().stream()
+                .filter(r -> isFreshTimestamp(r.createdAt(), windowStart, now))
+                .count();
+        double reviewFreshness = (double) fresh / evidence.reviews().size();
+        double fetchFreshness = isFreshTimestamp(evidence.fetchedAt(), windowStart, now)
+                ? 1.0 : 0.0;
+        return reviewFreshness * fetchFreshness;
+    }
+
+    private boolean isFreshTimestamp(Instant value, Instant windowStart, Instant now) {
+        return value != null && !value.isBefore(windowStart) && !value.isAfter(now);
     }
 
     private double coverage(List<ReviewEvidence> reviews,
