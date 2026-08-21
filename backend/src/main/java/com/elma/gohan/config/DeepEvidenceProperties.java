@@ -19,6 +19,7 @@ public class DeepEvidenceProperties {
     private int analysisCacheHours = 6;
     private int maxLinksPerSource = 3;
     private double entityMatchThreshold = 0.72;
+    private String queryVersion = "brave-query-v0.2";
     private String analysisAlgorithmVersion = "deep-evidence-v0.1";
     private String riskAlgorithmVersion = "deep-risk-v0.1";
     private List<String> storeSuffixes = new ArrayList<>(List.of(
@@ -56,6 +57,8 @@ public class DeepEvidenceProperties {
     public void setMaxLinksPerSource(int maxLinksPerSource) { this.maxLinksPerSource = maxLinksPerSource; }
     public double getEntityMatchThreshold() { return entityMatchThreshold; }
     public void setEntityMatchThreshold(double entityMatchThreshold) { this.entityMatchThreshold = entityMatchThreshold; }
+    public String getQueryVersion() { return queryVersion; }
+    public void setQueryVersion(String queryVersion) { this.queryVersion = queryVersion; }
     public String getAnalysisAlgorithmVersion() { return analysisAlgorithmVersion; }
     public void setAnalysisAlgorithmVersion(String analysisAlgorithmVersion) { this.analysisAlgorithmVersion = analysisAlgorithmVersion; }
     public String getRiskAlgorithmVersion() { return riskAlgorithmVersion; }

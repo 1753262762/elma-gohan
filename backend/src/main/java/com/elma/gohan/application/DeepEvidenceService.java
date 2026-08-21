@@ -302,7 +302,8 @@ public class DeepEvidenceService {
     }
 
     private String queryFingerprint(Restaurant restaurant, DeepEvidenceSource source) {
-        return sha256(source.name() + "|" + restaurant.name() + "|" + restaurant.address());
+        return sha256(properties.getQueryVersion() + "|" + source.name() + "|"
+                + restaurant.name() + "|" + restaurant.address());
     }
 
     private String evidenceFingerprint(Map<DeepEvidenceSource, SourceMaterial> materials) {

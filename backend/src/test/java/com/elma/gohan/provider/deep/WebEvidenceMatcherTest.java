@@ -35,4 +35,16 @@ class WebEvidenceMatcherTest {
         assertThat(matcher.match(restaurant, "大学城湘味家常菜", "五一广场"))
                 .isZero();
     }
+
+    @Test
+    void searchLocationPrefersShortStoreQualifierAndCompactsAddress() {
+        assertThat(matcher.searchLocationKeyword(
+                "甄钵炉子常德菜馆（麓谷·新长海中心店）",
+                "麓谷大道627号麓谷·新长海中心A2栋14楼"))
+                .isEqualTo("麓谷新长海中心");
+        assertThat(matcher.searchLocationKeyword(
+                "甄钵炉子常德菜馆",
+                "麓谷大道627号麓谷·新长海中心A2栋14楼"))
+                .isEqualTo("新长海中心");
+    }
 }

@@ -60,6 +60,7 @@ elma:
     analysis-cache-hours: ${DEEP_ANALYSIS_CACHE_HOURS:6}
     max-links-per-source: 3
     entity-match-threshold: 0.72
+    query-version: brave-query-v0.2
     analysis-algorithm-version: deep-evidence-v0.1
     risk-algorithm-version: deep-risk-v0.1
     store-suffixes: [旗舰店, 总店, 分店, 门店, 店]

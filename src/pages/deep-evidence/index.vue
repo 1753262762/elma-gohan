@@ -189,7 +189,7 @@ function sourceLabel(source: DeepEvidenceSource) {
 
 function sourceStatus(status: EvidenceStatus, count: number | null) {
   if (status === 'UNAVAILABLE') return '暂不可用'
-  if (status === 'NO_DATA') return '公开结果较少'
+  if (status === 'NO_DATA') return '暂未找到同店公开线索'
   return count === null ? '已使用' : `找到 ${count} 条`
 }
 

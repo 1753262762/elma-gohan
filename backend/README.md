@@ -78,4 +78,4 @@ config/            Amap/Baidu/EntityResolution/Risk/Recommendation/DeepEvidence 
 2. `curl -X POST localhost:8080/api/v1/recommendations -H "Content-Type: application/json" -H "X-Anonymous-User-Id: <uuid>" -d '{"latitude":28.2282,"longitude":112.9388}'` -> 201,返回一家真实餐厅。
 3. 检查响应中的 `evidenceSummary`；百度不可用时应为 `UNAVAILABLE`，推荐仍成功。
 4. 用返回的 `recommendationId` 依次调 `/api/v1/recommendations/<id>/reroll`（测试版最多 5 次，耗尽回初始推荐）与 `/api/v1/recommendations/<id>/feedback`（`{"result":"LIKE"}`）。
-5. 对当前餐厅调用 `/api/v1/recommendations/<id>/deep-evidence`；首次最多 3 次 Brave 查询，同一餐厅再次调用应命中缓存且不再查询。
+5. 对当前餐厅调用 `/api/v1/recommendations/<id>/deep-evidence`；三个来源先查询最近 31 天，严格门店匹配为 0 时各自最多追加一次不限时间查询，因此首次最多 6 次 Brave 调用；同一餐厅再次调用应命中缓存且不再查询。
